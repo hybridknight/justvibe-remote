@@ -17,7 +17,11 @@ JustVibe Remote was authored as a new project. No source, bridge, assets, or bin
 - Plugin API v1 loads JSON data only. App plugins can still define keystrokes with effects in the target app; use plugins you trust. Displayed author names are not authenticated publisher identities.
 - Normal operation does not log keyboard events. An explicitly launched, bounded dictation-button diagnostic records only the selected remote microphone button’s down/up state and timing; it does not record speech or other keys. Windows receives Raw Input packets from the OS and discards unmatched device identities before decoding button content. macOS registers a device-specific HID match.
 
+The custom shortcut recorder temporarily captures key events while its field is focused in JustVibe’s active key window. With the existing Input Monitoring/Accessibility access, it intercepts system shortcuts before macOS consumes them, so shortcuts such as F13 can be recorded. Capture ends on key release, cancellation, focus loss, or closing the sheet; events from other apps are passed through without decoding or logging. Recording a shortcut does not start audio capture.
+
 Codex itself may transmit microphone audio as part of its own dictation service. JustVibe Remote does not change that service's privacy behavior.
+
+The optional macOS **Dictation in any app** setting sends a user-confirmed system Dictation shortcut into the foreground app and Escape to stop. It is off by default, saved per remote, and can be a fallback for unconfigured app dictation or apply everywhere. It does not grant permissions, enable system Dictation, change app shortcuts, or add a speech-recognition service. macOS handles microphone access and recognition according to the user’s Dictation settings, including any processing by Apple. Foreground process identity is runtime-only. Pending starts are cancelled on focus changes; stop cleanup is addressed to the original app so it cannot toggle dictation in a newly focused app. OS acceptance and recognition are not inferred from successful shortcut posting.
 
 ## Optional microphone test
 

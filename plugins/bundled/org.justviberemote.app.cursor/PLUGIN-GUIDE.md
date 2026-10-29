@@ -207,6 +207,8 @@ JustVibe Remote can follow the foreground app using the existing `app.targets` i
 Use accurate bundle IDs on macOS and process names (without `.exe`) on Windows. Prefer specific identities over broad display names. An optional user-selected application path takes precedence and can disambiguate overlapping plugins. Identity matching does not authenticate an application's publisher. Agents should include a focus-switch acceptance test: configure two app profiles with different actions on the same button, switch between them, then switch to an unsupported app; verify the expected action, native fallback, and release of held dictation shortcuts.
 
 
-## Bundled Cursor scope and API 3
+## Bundled Cursor scope and held dictation
 
-The user explicitly requested bundled Cursor support. This package is host-maintained bundled-plugin work. It uses macOS-only schema/API 3/3 with toggle-shortcut dictation, as documented in the host docs/PLUGINS.md; this supersedes the starter's API 1 held-only restrictions. Keep the reference schema snapshot unchanged. Control+M and press-to-start / press-to-stop behavior were supplied and confirmed by the user. Preserve org.justviberemote.app.cursor as the bundled ID. Do not claim Windows or live app verification.
+This host-maintained bundled plugin uses macOS-only schema/API 1/1 with hold-shortcut dictation. The user explicitly chose Control+M with a held remote button on 2026-10-30, superseding the earlier toggle behavior. Keep the reference schema snapshot and org.justviberemote.app.cursor ID unchanged. Configure remote activation as hold. Do not change Cursor’s keyboard bindings or claim Windows or unperformed live verification.
+
+For the XING WEI mic button, live timing showed short pulses during physical holds. The user selected toggle remote activation: one pulse starts holding Control+M and the next releases it. Keep the plugin operation hold-shortcut; use voiceMode toggle for this receiver.

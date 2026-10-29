@@ -31,6 +31,81 @@ import Foundation
         check(toggleTarget?.liveApplication(resolve:{_ in replacement}) == nil,"a terminated original instance cannot target a replacement with a reused PID and missing launch dates")
         check(ToggleShortcutTarget(currentApplication,foregroundPID:101) == nil,"a terminated instance cannot acquire toggle ownership")
         var events:[String]=[],toggleLease=ToggleShortcutLease()
+        let nativeStart=try MacShortcut.parse("CTRL+M")
+        let systemStop=try TargetOutput.dictationStopShortcut(start:nativeStart,system:true)
+        check(systemStop.key == 53 && systemStop.flags.isEmpty,"macOS Dictation uses Escape to stop without toggling an ended recording back on")
+        let nativeStop=try TargetOutput.dictationStopShortcut(start:nativeStart,system:false)
+        check(nativeStop.key == nativeStart.key && nativeStop.flags == nativeStart.flags,"native app toggle dictation retains its original stop shortcut")
+        var systemPartial=ToggleShortcutLease()
+        do { try systemPartial.start(down:{},up:{throw JustVibeRemoteError.message("test")}) } catch {}
+        try systemPartial.stop(down:{events.append("escape-down")},up:{events.append("escape-up")},releaseStart:{events.append("start-key-up")})
+        check(events == ["start-key-up","escape-down","escape-up"] && !systemPartial.active,"a partial system start releases its original key before sending a separate Escape stop")
+        events=[]
+        var gesture=SystemDictationSettings();gesture.mode = .fallback;gesture.confirmed=true;gesture.preset = .controlTwice
+        try gesture.validate()
+        check(gesture.enabled && gesture.shortcut.isEmpty,"a selected macOS gesture needs no recorded custom chord")
+        check(SystemDictationShortcut.allCases.count == 7,"the macOS shortcut list includes six presets and Customize")
+        let controlPlan=try SystemDictationKeyPlan.events(gesture)
+        check(controlPlan.count == 4 && controlPlan.map(\.key) == [59,59,59,59],"Control twice emits two complete physical Control presses")
+        check(controlPlan.allSatisfy({$0.type == .flagsChanged}) && controlPlan[0].flags.contains(.maskControl) && controlPlan[1].flags.isEmpty,"modifier gestures use flag-change events with matching releases")
+        gesture.preset = .rightCommandTwice
+        check(try SystemDictationKeyPlan.events(gesture).first?.key == 54,"right Command has its own physical key")
+        gesture.preset = .leftCommandTwice
+        check(try SystemDictationKeyPlan.events(gesture).first?.key == 55,"left Command has its own physical key")
+        gesture.preset = .eitherCommandTwice
+        check(try SystemDictationKeyPlan.events(gesture).first?.key == 55,"either Command uses a valid left Command gesture")
+        gesture.preset = .globeTwice
+        check(try SystemDictationKeyPlan.events(gesture).map(\.key) == [63,63,63,63],"Globe twice emits two Fn modifier presses")
+        gesture.preset = .microphone
+        let microphonePlan=try SystemDictationKeyPlan.events(gesture)
+        check(microphonePlan.map(\.key) == [63,2,2,63] && microphonePlan[1].flags.contains(.maskSecondaryFn),"microphone choice uses the documented Fn+D Dictation command")
+        gesture.preset = .custom;gesture.shortcut="CTRL+SHIFT+D"
+        check(try SystemDictationKeyPlan.events(gesture).count == 2,"custom dictation remains a single complete chord tap")
+        gesture.shortcut="F13";try gesture.validate()
+        check(try SystemDictationKeyPlan.events(gesture).map(\.key) == [105,105],"a custom F13 dictation shortcut emits its physical key without requiring modifiers")
+        let f13Plan=try SystemDictationKeyPlan.events(gesture)
+        check(f13Plan.allSatisfy { $0.flags == .maskSecondaryFn },"F13 press and release retain native function-key metadata")
+        check(f13Plan[0].release == f13Plan[1],"cancelling an F13 press emits the same correctly flagged release")
+        check(MacShortcut.eventFlags(key:105,modifiers:.maskControl) == [.maskControl,.maskSecondaryFn],"function-key metadata preserves configured shortcut modifiers")
+        check(MacShortcut.eventFlags(key:46,modifiers:.maskControl) == .maskControl,"ordinary Control+M output does not acquire an Fn modifier")
+        check(!MacShortcut.isFunctionKey(3) && MacShortcut.isFunctionKey(105),"the letter F is not confused with a function key")
+        let gestureReload=try JSONDecoder().decode(SystemDictationSettings.self,from:JSONEncoder().encode(gesture))
+        check(gestureReload == gesture,"preset choice and custom chord persist together")
+        let legacyGesture=try JSONDecoder().decode(SystemDictationSettings.self,from:Data(#"{"mode":"fallback","shortcut":"CTRL+SHIFT+D","confirmed":true,"controlID":"microphone"}"#.utf8))
+        check(legacyGesture.shortcutKind == .custom && legacyGesture.shortcut == "CTRL+SHIFT+D","older settings retain their custom shortcut without migration guesses")
+        var scheduled:[()->Void]=[],delays:[TimeInterval]=[],posted:[SystemDictationKeyStroke]=[],sequenceFailures=0
+        let sequence=SystemDictationKeySequence()
+        try sequence.start(controlPlan,schedule:{delay,work in delays.append(delay);scheduled.append(work)},post:{posted.append($0)},failed:{_ in sequenceFailures+=1})
+        check(posted == [controlPlan[0]] && scheduled.count == 1,"modifier sequence starts one event and schedules the remainder without blocking")
+        while !scheduled.isEmpty { scheduled.removeFirst()() }
+        check(posted == controlPlan && delays == [0.05,0.05,0.05] && sequenceFailures == 0,"double presses have bounded spacing and complete without held modifiers")
+        try sequence.cancel { posted.append($0) }
+        check(posted == controlPlan,"cleanup after a completed gesture emits no extra modifier events")
+        scheduled=[];posted=[]
+        let cancelledSequence=SystemDictationKeySequence()
+        try cancelledSequence.start(controlPlan,schedule:{_,work in scheduled.append(work)},post:{posted.append($0)},failed:{_ in sequenceFailures+=1})
+        try cancelledSequence.cancel { posted.append($0) }
+        while !scheduled.isEmpty { scheduled.removeFirst()() }
+        check(posted == Array(controlPlan.prefix(2)),"focus loss or a second mic press releases Control and cancels the second tap")
+        scheduled=[];posted=[]
+        let fnSequence=SystemDictationKeySequence()
+        try fnSequence.start(microphonePlan,schedule:{_,work in scheduled.append(work)},post:{posted.append($0)},failed:{_ in sequenceFailures+=1})
+        scheduled.removeFirst()()
+        try fnSequence.cancel { posted.append($0) }
+        while !scheduled.isEmpty { scheduled.removeFirst()() }
+        check(posted.map(\.key) == [63,2,2,63] && posted[2].type == .keyUp && posted[3].flags.isEmpty,"cancelling Fn+D releases the ordinary key before the Fn modifier")
+        scheduled=[];posted=[]
+        let failedSequence=SystemDictationKeySequence()
+        try failedSequence.start(controlPlan,schedule:{_,work in scheduled.append(work)},post:{event in
+            if !posted.isEmpty { throw JustVibeRemoteError.message("post failed") };posted.append(event)
+        },failed:{_ in sequenceFailures+=1})
+        scheduled.removeFirst()()
+        try failedSequence.cancel { posted.append($0) }
+        check(sequenceFailures == 1 && posted == Array(controlPlan.prefix(2)),"an asynchronous output failure is reported and its held modifier stays available for cleanup")
+        var stopTap=SingleShortcutTap(),escapeDowns=0,escapeUps=0
+        do { try stopTap.send(down:{escapeDowns+=1},up:{escapeUps+=1;throw JustVibeRemoteError.message("up failed")}) } catch {}
+        try stopTap.send(down:{escapeDowns+=1},up:{escapeUps+=1})
+        check(stopTap.complete && escapeDowns == 1 && escapeUps == 2,"retrying an Escape key-up never emits another stop key-down")
         try toggleLease.start(down:{events.append("down")},up:{events.append("up")})
         check(toggleLease.active && events == ["down","up"],"toggle dictation starts with one complete tap")
         try toggleLease.start(down:{events.append("extra")},up:{events.append("extra")})
@@ -293,7 +368,7 @@ import Foundation
         check(cursor.app?.targets["macos"]?.bundleIds == ["com.todesktop.230313mzl4w4u92"],"bundled Cursor targets the inspected desktop application")
         let cursorConfig=try PluginSelection.select(defaults,catalog:catalog,deviceID:defaults.devicePluginID,appID:cursor.id)
         check(cursorConfig.shortcut == "CTRL+M" && cursorConfig.voiceMode == "toggle" && !cursorConfig.shortcutConfirmed,"Cursor defaults to press-once remote activation with confirmed Control+M")
-        check(cursor.app?.actions["dictate"]?.operation == "toggle-shortcut","Cursor sends complete Control+M start and stop taps without holding the shortcut")
+        check(cursor.schemaVersion == 1 && cursor.apiVersion == 1 && cursor.app?.actions["dictate"]?.operation == "hold-shortcut","Cursor holds Control+M for its native Hold to Talk command")
         let antigravity=try catalog.find("org.justviberemote.app.antigravity",kind:"app")
         check(antigravity.name == "Antigravity" && antigravity.app?.targets["macos"]?.bundleIds == ["com.google.antigravity"],"bundled Antigravity targets the inspected desktop application")
         check(antigravity.app?.supports(.focus) == true && antigravity.app?.supports(.send) == true,"Antigravity exposes the existing app-control actions")
@@ -425,6 +500,56 @@ import Foundation
         names.appMappings[AppRouting.key(names.devicePluginID, overlap.id)] = savedEditor
         check(AppRouting.resolve(names, apps:[overlap,codexPlugin], foreground:ForegroundApp(bundleID:"com.openai.codex",name:"Codex"))?.appPluginID == original.appPluginID, "exact bundle identity outranks overlapping name")
         check(AppRouting.resolve(names, apps:[overlap,codexPlugin], foreground:ForegroundApp(name:"Codex")) == nil, "overlapping name requires disambiguation")
+        var universal=perApp
+        var systemSetting=SystemDictationSettings();systemSetting.mode = .fallback
+        systemSetting.shortcut="CTRL+SHIFT+D";systemSetting.confirmed=true
+        universal.systemDictation[universal.devicePluginID]=systemSetting
+        try universal.validate()
+        let unsupportedFront=ForegroundApp(bundleID:"com.example.notes",name:"Notes",path:"/Applications/Notes.app",instance:"123")
+        let systemEncoder=JSONEncoder();systemEncoder.outputFormatting = [.sortedKeys]
+        let universalBytes=try systemEncoder.encode(universal)
+        let universalUnknown=AppRouting.resolve(universal,apps:catalog.apps,foreground:unsupportedFront)!
+        var presetUniversal=universal;presetUniversal.systemDictation[universal.devicePluginID]?.preset = .controlTwice
+        presetUniversal.systemDictation[universal.devicePluginID]?.shortcut=""
+        let presetRoute=AppRouting.resolve(presetUniversal,apps:catalog.apps,foreground:unsupportedFront)
+        check(presetRoute?.usesSystemDictation == true && presetRoute?.shortcut == "Press Control Key Twice","preset-only settings route to macOS Dictation without trying to parse a regular chord")
+        check(universalUnknown.usesSystemDictation && universalUnknown.appPluginID == Configuration.noSpecificAppID,"a linked mic can dictate in an unsupported app without creating an app plugin")
+        check(universalUnknown.shortcut == systemSetting.shortcut && universalUnknown.shortcutConfirmed && universalUnknown.voiceMode == "toggle","universal routing uses only its confirmed system shortcut and press-once activation")
+        check(universalUnknown.systemDictationTargetPID == 123,"system dictation pins the foreground process before the delayed start")
+        check(universalUnknown.bindings.first(where:{$0.controlID == "microphone"})?.action == .dictate,"universal routing enables the selected linked button")
+        check(universalUnknown.bindings.filter({$0.controlID != "microphone"}).allSatisfy({$0.action == .native}),"a newly created fallback keeps all other buttons native")
+        check(AppRouting.outputPlugin(universalUnknown,apps:catalog.apps)?.actions["dictate"]?.operation == "toggle-shortcut","universal runtime exposes its own dictation capability without editing a manifest")
+        check(AppRouting.resolve(universal,apps:catalog.apps,foreground:codexFront)?.usesSystemDictation == false,"fallback preserves configured native app dictation")
+        let universalEditor=AppRouting.resolve(universal,apps:catalog.apps,foreground:editorFront)!
+        check(universalEditor.usesSystemDictation && universalEditor.appPluginID == editorID,"apps without native dictation can use the system fallback and keep their other actions")
+        check(AppRouting.outputPlugin(universalEditor,apps:catalog.apps)?.actions["escape"]?.shortcuts == editorPlugin.app?.actions["escape"]?.shortcuts,"system dictation preserves the app’s other shortcut definitions")
+        check(try systemEncoder.encode(universal) == universalBytes,"runtime system routing never writes changes into the displayed app profile")
+        var everywhere=universal;everywhere.systemDictation[everywhere.devicePluginID]?.mode = .everywhere
+        check(AppRouting.resolve(everywhere,apps:catalog.apps,foreground:codexFront)?.usesSystemDictation == true,"every-app mode can replace a native app’s dictation at runtime")
+        check(AppRouting.resolve(everywhere,apps:catalog.apps,foreground:nil) == nil,"system dictation cannot start without a foreground app")
+        var universalManual=universal;universalManual.followActiveApp=false
+        let manualUnknown=AppRouting.resolve(universalManual,apps:catalog.apps,foreground:unsupportedFront)!
+        check(manualUnknown.usesSystemDictation && manualUnknown.appPluginID == Configuration.noSpecificAppID,"universal dictation works with automatic app routing off without borrowing another app’s actions")
+        var disabledUniversal=universal;disabledUniversal.systemDictation[disabledUniversal.devicePluginID]?.mode = .off
+        check(AppRouting.resolve(disabledUniversal,apps:catalog.apps,foreground:unsupportedFront) == nil,"turning the feature off restores the prior native fallback")
+        var unconfirmedUniversal=universal;unconfirmedUniversal.systemDictation[unconfirmedUniversal.devicePluginID]?.confirmed=false
+        check(AppRouting.resolve(unconfirmedUniversal,apps:catalog.apps,foreground:unsupportedFront) == nil,"an unconfirmed system shortcut cannot receive a remote press")
+        do { try unconfirmedUniversal.validate();check(false,"unconfirmed system setting saved") } catch { check(true,"enabled system dictation requires explicit shortcut confirmation") }
+        var invalidSystem=systemSetting;invalidSystem.shortcut="D"
+        do { try invalidSystem.validate();check(false,"plain typing key accepted for system dictation") } catch { check(true,"system dictation rejects a shortcut that would type an unmodified letter") }
+        var unlinkedUniversal=universal;unlinkedUniversal.bindings[sharedIndex].usage=nil
+        check(AppRouting.resolve(unlinkedUniversal,apps:catalog.apps,foreground:unsupportedFront) == nil,"universal dictation never guesses an unlearned microphone signal")
+        var otherUniversal=universal;otherUniversal.devicePluginID="another.device"
+        check(AppRouting.resolve(otherUniversal,apps:catalog.apps,foreground:unsupportedFront) == nil,"system dictation consent and shortcuts remain per remote")
+        var ambiguousUniversal=names;ambiguousUniversal.systemDictation=universal.systemDictation
+        check(AppRouting.resolve(ambiguousUniversal,apps:[overlap,codexPlugin],foreground:ForegroundApp(name:"Codex")) == nil,"ambiguous targets stay inactive even when universal dictation is enabled")
+        check(AppRouting.resolve(universal,apps:catalog.apps,foreground:unsupportedFront,platform:"windows") == nil,"macOS universal dictation does not activate on Windows")
+        let universalReload=try JSONDecoder().decode(Configuration.self,from:universalBytes)
+        check(universalReload.systemDictation == universal.systemDictation,"system dictation settings survive saving and reopening")
+        let runtimeReload=try JSONDecoder().decode(Configuration.self,from:JSONEncoder().encode(universalUnknown))
+        check(!runtimeReload.usesSystemDictation && runtimeReload.systemDictationTargetPID == nil,"foreground process identity and system-routing state are never persisted")
+        let selectedUniversal=try PluginSelection.select(universal,catalog:catalog,deviceID:universal.devicePluginID,appID:editorID)
+        check(selectedUniversal.systemDictation == universal.systemDictation,"switching app profiles preserves per-remote system dictation settings")
         var previousVersion = original
         var legacyButtons = original.bindings; legacyButtons[0].usage = Usage(page:12,code:0x222)
         previousVersion.bindingSets[AppRouting.key(previousVersion.devicePluginID,editorID)] = legacyButtons

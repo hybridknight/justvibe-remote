@@ -32,6 +32,10 @@ Deliver the folder, ID/version, validation result, tested/unverified behavior, a
 A supplied remote image belongs to the separate device plugin's layout. Do not add device geometry or guessed HID usages to an app plugin. App identities and shortcuts still need their own evidence; keep this app manifest at schema/API `1/1`.
 
 
-## Bundled Cursor scope and Control+M taps
+## Bundled Cursor scope and Control+M hold
 
-This package is host-maintained bundled-plugin work. Preserve org.justviberemote.app.cursor and the reference schema snapshot. Keep macOS-only schema/API 3/3 and toggle-shortcut dictation. The user explicitly requires Control+M taps to start and stop dictation, not a chord held for the recording. This requirement supersedes the earlier Hold to Talk interpretation. Do not change Cursor’s keybindings or add an external dictation tool. Different Cursor windows or versions may have different shortcut behavior; do not promote a source-code default into a claim about the user’s active configuration. Do not claim Windows or unperformed live verification.
+This package is host-maintained bundled-plugin work. Preserve org.justviberemote.app.cursor and the reference schema snapshot. Use macOS-only schema/API 1/1 and hold-shortcut dictation. On 2026-10-30 the user explicitly chose to keep Control+M and hold the remote button while talking. This supersedes the previous tap-to-start/tap-to-stop requirement. Cursor’s installed command is Hold to Talk. Configure the saved Cursor profile with voiceMode hold; do not change Cursor’s keybindings or install an external dictation tool. Do not claim Windows or unperformed live verification.
+
+## XING WEI mic pulse evidence and current activation
+
+On 2026-10-30 an input-only check observed approximately 120 ms mic pulses even during user-reported three-second physical holds. The user then explicitly chose: press once to hold Control+M; press again to release it. This supersedes physical hold activation for this receiver. Keep hold-shortcut output and use voiceMode toggle for its Cursor profile. Do not confuse a toggled remote activation with the plugin’s toggle-shortcut operation: Cursor still requires a held keyboard chord.

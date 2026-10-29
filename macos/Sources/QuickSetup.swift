@@ -204,7 +204,7 @@ final class QuickSetup: NSObject, NSWindowDelegate {
                 add(text("Settings  ›  Keyboard Shortcuts",size:17,weight:.semibold))
                 note("1. Open \(app) → Settings (⌘,).")
                 note("2. Choose Keyboard Shortcuts and search “dictation”.")
-                note("3. Find the dictation command. Click the shortcut field below and press the same keys, then try them in the app’s composer.")
+                note("3. Set the dictation command to Control + Shift + M. Click the shortcut field below and press the same keys, then try them in the app’s composer.")
                 note("Choose dictation for entering text. The Voice chat hotkey starts a live conversation.")
                 if controller.appPlugin?.id == "org.justviberemote.app.chatgpt" { add(button("Open \(app) settings…",#selector(openAppSettings))) }
                 else { add(button("Open \(app)",#selector(openApp))) }
@@ -214,7 +214,7 @@ final class QuickSetup: NSObject, NSWindowDelegate {
             shortcut.widthAnchor.constraint(equalTo:content.widthAnchor).isActive=true
             shortcut.heightAnchor.constraint(equalToConstant:36).isActive=true
             if let suggested=suggestedShortcut { note("Suggested by the \(app) plugin: \(suggested). Continue saves the keys entered above.") }
-            note("Click the field, then press your shortcut, such as Control + M. Esc cancels; Tab moves to the next control.")
+            note("Click the field, then press your shortcut, such as Control + Shift + M. Esc cancels; Tab moves to the next control.")
             add(toggle)
             note("Turn this off if you prefer to hold the remote’s button while talking.")
             if openAI { add(button("View official shortcut guide",#selector(openShortcutGuide))) }

@@ -177,6 +177,38 @@ import UniformTypeIdentifiers
         }
         check(SingleInstanceLock.isReadOnly(["JustVibe Remote","--render-add-remote-preview","/tmp/preview.png"]),"new remote flow preview never activates hardware sessions")
         let recorded=ShortcutCapture.encode(keyCode:2,modifiers:[.control,.shift])
+        var priorityEnables=0,priorityDisables=0,priorityPushes=0,priorityPops=0
+        let priorityToken=UnsafeMutableRawPointer(bitPattern:1)!
+        let inputPriority=ShortcutInputPriority(enable:{ priorityEnables+=1;return 0 },disable:{ priorityDisables+=1;return 0 },push:{ priorityPushes+=1;return priorityToken },pop:{ token in
+            check(token == priorityToken,"shortcut capture restores only its own hotkey mode")
+            priorityPops+=1
+        })
+        inputPriority.begin();inputPriority.begin()
+        check(inputPriority.active && priorityEnables == 1 && priorityPushes == 1,"repeated focus callbacks acquire keyboard priority once")
+        inputPriority.end();inputPriority.end()
+        check(!inputPriority.active && priorityDisables == 1 && priorityPops == 1,"ending shortcut capture restores keyboard access exactly once")
+        let failedPriority=ShortcutInputPriority(enable:{ -1 },disable:{ priorityDisables+=1;return 0 },push:{ nil },pop:{ _ in priorityPops+=1 })
+        failedPriority.begin();failedPriority.end()
+        check(priorityDisables == 1 && priorityPops == 1,"failed input protection never releases another owner's requests")
+        do {
+            let temporaryPriority=ShortcutInputPriority(enable:{ 0 },disable:{ priorityDisables+=1;return 0 },push:{ priorityToken },pop:{ _ in priorityPops+=1 })
+            temporaryPriority.begin()
+        }
+        check(priorityDisables == 2 && priorityPops == 2,"destroying a recorder's priority lease restores normal keyboard behavior")
+        let priorityRecorder=ShortcutRecorder(frame:.zero)
+        _=priorityRecorder.becomeFirstResponder()
+        let priorityChord=NSEvent.keyEvent(with:.keyDown,location:.zero,modifierFlags:[.control,.shift],timestamp:0,windowNumber:0,context:nil,characters:"m",charactersIgnoringModifiers:"m",isARepeat:false,keyCode:46)!
+        check(priorityRecorder.intercept(priorityChord) && priorityRecorder.shortcutValue == "CTRL+SHIFT+M","priority field consumes the shortcut instead of forwarding its key-down")
+        check(priorityRecorder.intercept(priorityChord),"held shortcut repeats remain consumed after capture")
+        let priorityKeyUp=NSEvent.keyEvent(with:.keyUp,location:.zero,modifierFlags:[.control,.shift],timestamp:0,windowNumber:0,context:nil,characters:"m",charactersIgnoringModifiers:"m",isARepeat:false,keyCode:46)!
+        check(priorityRecorder.intercept(priorityKeyUp),"captured shortcut key-up is not forwarded to another app")
+        let modifiersReleased=NSEvent.keyEvent(with:.flagsChanged,location:.zero,modifierFlags:[],timestamp:0,windowNumber:0,context:nil,characters:"",charactersIgnoringModifiers:"",isARepeat:false,keyCode:56)!
+        check(priorityRecorder.intercept(modifiersReleased),"modifier release remains inside shortcut capture")
+        check(!priorityRecorder.intercept(priorityChord),"normal event handling resumes after all shortcut keys are released")
+        _=priorityRecorder.becomeFirstResponder()
+        let priorityF13=NSEvent.keyEvent(with:.keyDown,location:.zero,modifierFlags:[.function],timestamp:0,windowNumber:0,context:nil,characters:"",charactersIgnoringModifiers:"",isARepeat:false,keyCode:105)!
+        let priorityF13Up=NSEvent.keyEvent(with:.keyUp,location:.zero,modifierFlags:[.function],timestamp:0,windowNumber:0,context:nil,characters:"",charactersIgnoringModifiers:"",isARepeat:false,keyCode:105)!
+        check(priorityRecorder.intercept(priorityF13) && priorityRecorder.intercept(priorityF13Up) && !priorityRecorder.intercept(priorityChord),"function-key event flags do not leave keyboard priority stuck after release")
         check(ShortcutCapture.encode(keyCode:46,modifiers:[.control]) == "CTRL+M","Control+M is captured as the current dictation shortcut")
         let setupRecorder=ShortcutRecorder(frame:.zero)
         var recorderChanges=0;setupRecorder.changed={ recorderChanges+=1 }
@@ -202,7 +234,13 @@ import UniformTypeIdentifiers
         check(ShortcutCapture.encode(keyCode:36,modifiers:[.control]) == "CTRL+RETURN","return is recorded with its canonical token")
         check(ShortcutCapture.encode(keyCode:51,modifiers:[]) == "BACKSPACE","delete key records as Backspace")
         check(ShortcutCapture.encode(keyCode:53,modifiers:[.command]) == "CMD+ESC","modified Escape remains recordable")
-        check(ShortcutCapture.encode(keyCode:122,modifiers:[]) == nil,"unsupported function keys are rejected instead of stored")
+        check(ShortcutCapture.encode(keyCode:122,modifiers:[]) == "F1","custom recording supports function keys")
+        check(ShortcutCapture.encode(keyCode:105,modifiers:[]) == "F13","the current macOS F13 dictation shortcut is captured")
+        check(ShortcutCapture.encode(keyCode:105,modifiers:[.function]) == "F13","the function-key flag does not reject a physical F13 key")
+        let f13Recorder=ShortcutRecorder(frame:.zero);_=f13Recorder.becomeFirstResponder()
+        let f13Event=NSEvent.keyEvent(with:.keyDown,location:.zero,modifierFlags:[.function],timestamp:0,windowNumber:0,context:nil,characters:"",charactersIgnoringModifiers:"",isARepeat:false,keyCode:105)!
+        f13Recorder.keyDown(with:f13Event)
+        check(f13Recorder.shortcutValue == "F13","the recorder stores an F13 key event without printable characters")
         check(ShortcutCapture.encode(keyCode:2,modifiers:[.function]) == nil,"Fn is not silently discarded from a recorded shortcut")
         check(ShortcutCapture.encode(keyCode:2,modifiers:[.capsLock,.control]) == "CTRL+D","Caps Lock does not become an unsupported shortcut modifier")
         check(ShortcutCapture.display("CTRL+SHIFT+D") == "⌃ ⇧ D","recorded shortcuts display familiar Mac symbols")
@@ -295,6 +333,22 @@ import UniformTypeIdentifiers
             _=try ButtonTestCapture.transition(enabled:false) { exclusive in captureAttempts.append(exclusive);throw CaptureFailure.normal }
             check(false,"failed normal capture must propagate")
         } catch { check(captureAttempts == [false],"leaving test mode never retries exclusive capture") }
+        let beforeSystem=first.config
+        var universalSetting=SystemDictationSettings();universalSetting.mode = .fallback
+        universalSetting.shortcut="CTRL+SHIFT+D";universalSetting.confirmed=true
+        try first.saveSystemDictation(universalSetting)
+        check(first.systemDictationSettings == universalSetting,"controller saves universal dictation for its own remote")
+        check(second.systemDictationSettings.mode == .off,"enabling universal dictation does not enable another remote")
+        check(first.config.appPluginID == beforeSystem.appPluginID && first.config.bindings == beforeSystem.bindings && first.config.shortcut == beforeSystem.shortcut,"universal setup does not change the editor’s app profile, bindings, or native shortcut")
+        check(!first.running && !first.voiceActive && !first.microphoneTesting,"saving universal dictation never starts a receiver, audio capture, or dictation")
+        check(try first.store.load().systemDictation[firstID] == universalSetting,"universal settings survive a real settings-store round trip")
+        do { try second.saveSystemDictation(universalSetting);check(false,"unlinked universal button was accepted") }
+        catch { check(second.systemDictationSettings.mode == .off,"an unlinked microphone must be learned before enabling universal dictation") }
+        var unconfirmedSystem=universalSetting;unconfirmedSystem.confirmed=false
+        do { try first.saveSystemDictation(unconfirmedSystem);check(false,"unconfirmed universal setting was accepted") }
+        catch { check(first.systemDictationSettings == universalSetting,"invalid universal setup leaves the last valid configuration intact") }
+        universalSetting.mode = .off;try first.saveSystemDictation(universalSetting)
+        check(!first.systemDictationSettings.enabled,"universal dictation can be disabled independently of native app profiles")
         let savedBeforeTest=try Data(contentsOf:first.store.url)
         first.setButtonTestMode(true)
         check(first.buttonTestMode && !second.buttonTestMode,"test mode applies only to the selected remote")

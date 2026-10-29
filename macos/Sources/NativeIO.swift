@@ -2,6 +2,8 @@ import AppKit
 import Darwin
 import ApplicationServices
 import IOKit.hid
+import IOKit.hidsystem
+import Carbon.HIToolbox
 
 final class RemoteInput {
     private var manager: IOHIDManager?
@@ -91,14 +93,27 @@ final class RemoteInput {
 }
 
 struct MacShortcut {
-    static let keyCodes: [String: CGKeyCode] = ["A":0,"S":1,"D":2,"F":3,"H":4,"G":5,"Z":6,"X":7,"C":8,"V":9,"B":11,"Q":12,"W":13,"E":14,"R":15,"Y":16,"T":17,"O":31,"U":32,"I":34,"P":35,"L":37,"J":38,"K":40,"N":45,"M":46,"SPACE":49,"RETURN":36,"ENTER":36,"ESC":53,"BACKSPACE":51]
+    static let keyCodes: [String: CGKeyCode] = {
+        var keys:[String:CGKeyCode] = ["A":0,"S":1,"D":2,"F":3,"H":4,"G":5,"Z":6,"X":7,"C":8,"V":9,"B":11,"Q":12,"W":13,"E":14,"R":15,"Y":16,"T":17,"O":31,"U":32,"I":34,"P":35,"L":37,"J":38,"K":40,"N":45,"M":46,"SPACE":49,"RETURN":36,"ENTER":36,"ESC":53,"BACKSPACE":51]
+        let functions=[kVK_F1,kVK_F2,kVK_F3,kVK_F4,kVK_F5,kVK_F6,kVK_F7,kVK_F8,kVK_F9,kVK_F10,kVK_F11,kVK_F12,kVK_F13,kVK_F14,kVK_F15,kVK_F16,kVK_F17,kVK_F18,kVK_F19,kVK_F20]
+        for (index,code) in functions.enumerated() { keys["F\(index+1)"]=CGKeyCode(code) }
+        return keys
+    }()
+    static func isFunctionKey(_ code:CGKeyCode)->Bool {
+        keyCodes.contains { $0.value == code && $0.key.hasPrefix("F") && Int($0.key.dropFirst()) != nil }
+    }
+    /// F-key events carry AppKit's function-key flag on both press and release,
+    /// even when no physical Fn modifier is held.
+    static func eventFlags(key:CGKeyCode,modifiers:CGEventFlags)->CGEventFlags {
+        isFunctionKey(key) ? modifiers.union(.maskSecondaryFn):modifiers
+    }
     let key: CGKeyCode
     let flags: CGEventFlags
     static func parse(_ text: String) throws -> MacShortcut {
         let pieces = text.uppercased().split(separator: "+").map { $0.trimmingCharacters(in: .whitespaces) }
         guard let final = pieces.last, !pieces.contains("") else { throw JustVibeRemoteError.message("Enter a shortcut such as CTRL+SHIFT+D.") }
 
-        guard let code = keyCodes[final] else { throw JustVibeRemoteError.message("Unsupported shortcut key. Use a letter, SPACE, RETURN, or ESC.") }
+        guard let code = keyCodes[final] else { throw JustVibeRemoteError.message("Unsupported shortcut key. Use a letter, F1–F20, SPACE, RETURN, or ESC.") }
         var flags: CGEventFlags = []
         for item in pieces.dropLast() {
             switch item {
@@ -112,9 +127,77 @@ struct MacShortcut {
         return MacShortcut(key: code, flags: flags)
     }
 }
-/// Retain the process instance, including when Launch Services has no launch
-/// date (as can happen for Cursor). The retained instance's termination state
-/// prevents cleanup from being redirected to a later process reusing its PID.
+struct SystemDictationKeyStroke:Equatable {
+    let key:CGKeyCode
+    let flags:CGEventFlags
+    let type:CGEventType
+    var release:SystemDictationKeyStroke? {
+        if type == .keyDown { return SystemDictationKeyStroke(key:key,flags:MacShortcut.eventFlags(key:key,modifiers:[]),type:.keyUp) }
+        if type == .flagsChanged && !flags.isEmpty { return SystemDictationKeyStroke(key:key,flags:[],type:.flagsChanged) }
+        return nil
+    }
+}
+enum SystemDictationKeyPlan {
+    static func events(_ setting:SystemDictationSettings) throws -> [SystemDictationKeyStroke] {
+        func twice(_ key:Int,_ flags:CGEventFlags)->[SystemDictationKeyStroke] {
+            let down=SystemDictationKeyStroke(key:CGKeyCode(key),flags:flags,type:.flagsChanged)
+            return [down,down.release!,down,down.release!]
+        }
+        switch setting.shortcutKind {
+        case .controlTwice:return twice(kVK_Control,[.maskControl,CGEventFlags(rawValue:UInt64(NX_DEVICELCTLKEYMASK))])
+        case .globeTwice:return twice(kVK_Function,.maskSecondaryFn)
+        case .rightCommandTwice:return twice(kVK_RightCommand,[.maskCommand,CGEventFlags(rawValue:UInt64(NX_DEVICERCMDKEYMASK))])
+        case .leftCommandTwice,.eitherCommandTwice:return twice(kVK_Command,[.maskCommand,CGEventFlags(rawValue:UInt64(NX_DEVICELCMDKEYMASK))])
+        case .microphone:
+            // Apple's documented Fn+D Dictation command; no private media-key code.
+            let fn=SystemDictationKeyStroke(key:CGKeyCode(kVK_Function),flags:.maskSecondaryFn,type:.flagsChanged)
+            return [fn,SystemDictationKeyStroke(key:CGKeyCode(kVK_ANSI_D),flags:.maskSecondaryFn,type:.keyDown),SystemDictationKeyStroke(key:CGKeyCode(kVK_ANSI_D),flags:.maskSecondaryFn,type:.keyUp),fn.release!]
+        case .custom:
+            let chord=try MacShortcut.parse(setting.shortcut)
+            return [SystemDictationKeyStroke(key:chord.key,flags:MacShortcut.eventFlags(key:chord.key,modifiers:chord.flags),type:.keyDown),SystemDictationKeyStroke(key:chord.key,flags:MacShortcut.eventFlags(key:chord.key,modifiers:[]),type:.keyUp)]
+        }
+    }
+}
+/// A short, cancellable sequence. Modifier gestures need real spacing, while
+/// the main queue must stay free to process a remote stop or a focus change.
+final class SystemDictationKeySequence {
+    private var generation=0
+    private var releases:[SystemDictationKeyStroke]=[]
+    private(set) var postedAny=false
+    func start(_ events:[SystemDictationKeyStroke],schedule:@escaping (TimeInterval,@escaping ()->Void)->Void,
+               post:@escaping (SystemDictationKeyStroke)throws->Void,failed:@escaping (Error)->Void) throws {
+        generation+=1
+        try emit(events,index:0,ticket:generation,schedule:schedule,post:post,failed:failed)
+    }
+    private func emit(_ events:[SystemDictationKeyStroke],index:Int,ticket:Int,schedule:@escaping (TimeInterval,@escaping ()->Void)->Void,
+                      post:@escaping (SystemDictationKeyStroke)throws->Void,failed:@escaping (Error)->Void) throws {
+        guard ticket == generation,events.indices.contains(index) else { return }
+        let event=events[index];try post(event);postedAny=true
+        releases.removeAll { $0.key == event.key }
+        if let release=event.release { releases.append(release) }
+        if index+1<events.count {
+            schedule(0.05) { [weak self] in
+                do { try self?.emit(events,index:index+1,ticket:ticket,schedule:schedule,post:post,failed:failed) }
+                catch { failed(error) }
+            }
+        }
+    }
+    func cancel(post:(SystemDictationKeyStroke)throws->Void) throws {
+        generation+=1
+        while let event=releases.last { try post(event);releases.removeLast() }
+    }
+}
+struct SingleShortcutTap {
+    private(set) var complete=false
+    private(set) var pendingKeyUp=false
+    mutating func send(down:()throws->Void,up:()throws->Void) throws {
+        guard !complete else { return }
+        if !pendingKeyUp { try down();pendingKeyUp=true }
+        try up();pendingKeyUp=false;complete=true
+    }
+}
+/// Retain the process instance even when Launch Services has no launch date.
+/// Its termination state prevents cleanup from targeting a reused process ID.
 protocol ToggleShortcutApplication:AnyObject {
     var processIdentifier:pid_t { get }
     var isTerminated:Bool { get }
@@ -142,8 +225,13 @@ final class TargetOutput {
     private var toggleLease=ToggleShortcutLease()
     private var toggleShortcut:MacShortcut?
     private var toggleTarget:ToggleShortcutTarget?
-    var hasVoiceOutput:Bool { heldShortcut != nil || toggleLease.active }
+    private var systemSequence:SystemDictationKeySequence?
+    private var systemTarget:ToggleShortcutTarget?
+    private var systemStop=SingleShortcutTap()
+    var voiceFailure:((Error)->Void)?
+    var hasVoiceOutput:Bool { heldShortcut != nil || toggleLease.active || systemTarget != nil }
     func beginDictation(_ config:Configuration,operation:String) throws {
+        if config.usesSystemDictation { try beginSystemDictation(config);return }
         guard operation == "toggle-shortcut" else { try hold(config.shortcut);return }
         guard !hasVoiceOutput else { return }
         guard let app=target(config),
@@ -170,8 +258,39 @@ final class TargetOutput {
         var lease=toggleLease
         defer { toggleLease=lease }
         let destination=Self.toggleEventPID(target:app.processIdentifier,foreground:NSWorkspace.shared.frontmostApplication?.processIdentifier)
-        try lease.stop(down:{try self.post(shortcut.key,flags:shortcut.flags,down:true,pid:destination)},up:{try self.post(shortcut.key,flags:[],down:false,pid:destination)})
+        // Native app toggles retain the configured start/stop chord.
+        let stop=try Self.dictationStopShortcut(start:shortcut,system:false)
+        try lease.stop(down:{try self.post(stop.key,flags:stop.flags,down:true,pid:destination)},up:{try self.post(stop.key,flags:[],down:false,pid:destination)},releaseStart:{try self.post(shortcut.key,flags:[],down:false,pid:destination)})
         toggleTarget=nil;toggleShortcut=nil
+    }
+    private func beginSystemDictation(_ config:Configuration) throws {
+        guard !hasVoiceOutput else { return }
+        guard let setting=config.systemDictation[config.devicePluginID],setting.enabled,
+              let app=target(config),let target=ToggleShortcutTarget(app,foregroundPID:NSWorkspace.shared.frontmostApplication?.processIdentifier) else {
+            throw JustVibeRemoteError.message("Bring your text app to the front before starting macOS Dictation.")
+        }
+        try setting.validate()
+        let events=try SystemDictationKeyPlan.events(setting),sequence=SystemDictationKeySequence()
+        systemTarget=target;systemSequence=sequence;systemStop=SingleShortcutTap()
+        try sequence.start(events,schedule:{ delay,work in DispatchQueue.main.asyncAfter(deadline:.now()+delay,execute:work) },post:{ [weak self] event in
+            guard let self,let live=target.liveApplication(),NSWorkspace.shared.frontmostApplication?.processIdentifier == live.processIdentifier else {
+                throw JustVibeRemoteError.message("The active app changed. Press the microphone button again in your text app.")
+            }
+            try self.post(event.key,flags:event.flags,down:event.type == .keyDown,eventType:event.type)
+        },failed:{ [weak self] error in self?.voiceFailure?(error) })
+    }
+    private func releaseSystemDictation() throws {
+        guard let target=systemTarget else { return }
+        // Modifier-up events are safe globally and must not leave Fn/Ctrl/Cmd held.
+        try systemSequence?.cancel { event in try self.post(event.key,flags:event.flags,down:false,eventType:event.type) }
+        if systemSequence?.postedAny == true,let app=target.liveApplication() {
+            let pid=Self.toggleEventPID(target:app.processIdentifier,foreground:NSWorkspace.shared.frontmostApplication?.processIdentifier)
+            try systemStop.send(down:{try self.post(53,flags:[],down:true,pid:pid)},up:{try self.post(53,flags:[],down:false,pid:pid)})
+        }
+        systemSequence=nil;systemTarget=nil;systemStop=SingleShortcutTap()
+    }
+    static func dictationStopShortcut(start:MacShortcut,system:Bool) throws -> MacShortcut {
+        system ? try MacShortcut.parse("ESC"):start
     }
     /// Foreground shortcuts use the normal keyboard event path, as held
     /// dictation already does. After focus loss, cleanup must stay addressed to
@@ -185,6 +304,9 @@ final class TargetOutput {
         _ = AXIsProcessTrustedWithOptions([kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary)
     }
     func target(_ config: Configuration) -> NSRunningApplication? {
+        if config.usesSystemDictation {
+            return config.systemDictationTargetPID.flatMap { NSRunningApplication(processIdentifier:$0) }
+        }
         if config.appPluginID == Configuration.noSpecificAppID { return NSWorkspace.shared.frontmostApplication }
         func matches(_ app: NSRunningApplication) -> Bool {
             if !config.targetAppPath.isEmpty { return app.bundleURL?.standardizedFileURL.path == URL(fileURLWithPath: config.targetAppPath).standardizedFileURL.path }
@@ -217,6 +339,7 @@ final class TargetOutput {
         heldShortcut = shortcut
     }
     func release() throws {
+        if systemTarget != nil { try releaseSystemDictation();return }
         if toggleLease.active { try releaseToggle();return }
         guard let shortcut = heldShortcut else { return }
         try post(shortcut.key, flags: [], down: false)
@@ -228,12 +351,13 @@ final class TargetOutput {
         try post(shortcut.key, flags: shortcut.flags, down: true)
         try post(shortcut.key, flags: [], down: false)
     }
-    private func post(_ key: CGKeyCode, flags: CGEventFlags, down: Bool,pid:pid_t?=nil) throws {
+    private func post(_ key: CGKeyCode, flags: CGEventFlags, down: Bool,pid:pid_t?=nil,eventType:CGEventType?=nil) throws {
         guard Self.allowed else { throw JustVibeRemoteError.message("Accessibility permission is required to send shortcuts. No shortcut was sent.") }
         guard let event = CGEvent(keyboardEventSource: nil, virtualKey: key, keyDown: down) else {
             throw JustVibeRemoteError.message("macOS could not create the keyboard event.")
         }
-        event.flags = flags
+        event.flags = MacShortcut.eventFlags(key:key,modifiers:flags)
+        if let eventType { event.type=eventType }
         event.setIntegerValueField(.eventSourceUserData, value: 0x5256_4942)
         if let pid { event.postToPid(pid) }
         else { event.post(tap: .cghidEventTap) }

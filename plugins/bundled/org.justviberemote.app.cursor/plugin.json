@@ -1,8 +1,8 @@
 {
-  "schemaVersion": 3,
-  "apiVersion": 3,
+  "schemaVersion": 1,
+  "apiVersion": 1,
   "id": "org.justviberemote.app.cursor",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "name": "Cursor",
   "author": "JustVibeRemote",
   "kind": "app",
@@ -30,7 +30,7 @@
         "operation": "focus"
       },
       "dictate": {
-        "operation": "toggle-shortcut",
+        "operation": "hold-shortcut",
         "shortcuts": {
           "macos": "CTRL+M"
         }

@@ -9,6 +9,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var setupWizard: QuickSetup?
     private var microphoneWindow: MicrophoneTest?
     private var cursorWindow: CursorSetup?
+    private var systemDictationWindow:SystemDictationSetup?
     private var addRemoteFlow:AddRemoteFlow?
     private let voiceMicrophoneHost=NSStackView()
     private var voiceMicrophonePanel:VoiceMicrophonePanel?
@@ -24,6 +25,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var supportedAppSignature = ""
     private let followApp = NSButton(checkboxWithTitle: "Follow active app", target: nil, action: nil)
     private let routeLabel = NSTextField(labelWithString: "")
+    private let systemDictationStatus=NSTextField(wrappingLabelWithString:"")
+    private let systemDictationAppStatus=NSTextField(wrappingLabelWithString:"")
     private let bindingPicker = NSPopUpButton()
     private let actionPicker = NSPopUpButton()
     private let linked = NSTextField(labelWithString: "Not linked yet")
@@ -69,7 +72,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private let overviewConnection = NSTextField(wrappingLabelWithString: "")
     private let overviewApp = NSTextField(wrappingLabelWithString: "")
     private let overviewVoice = NSTextField(wrappingLabelWithString: "")
-    private let sidebarContext = NSTextField(wrappingLabelWithString: "")
     private var overviewAction: NSButton!
     private let pluginSummary = NSTextField(wrappingLabelWithString: "")
     private let pluginSearch=NSSearchField()
@@ -192,12 +194,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         pin(identity,to:sidebar,top:28,left:18,right:14)
         sidebar.addSubview(sidebarNavigation);sidebarNavigation.translatesAutoresizingMaskIntoConstraints=false
         sidebarNavigation.selected={ [weak self] page in self?.showPage(page) }
-        let divider=NSBox();divider.boxType = .separator
-        sidebar.addSubview(divider);divider.translatesAutoresizingMaskIntoConstraints=false
-        NSLayoutConstraint.activate([sidebarNavigation.leadingAnchor.constraint(equalTo:sidebar.leadingAnchor,constant:8),sidebarNavigation.trailingAnchor.constraint(equalTo:sidebar.trailingAnchor,constant:-8),sidebarNavigation.topAnchor.constraint(equalTo:identity.bottomAnchor,constant:20),sidebarNavigation.bottomAnchor.constraint(equalTo:divider.topAnchor,constant:-12),divider.leadingAnchor.constraint(equalTo:sidebar.leadingAnchor,constant:20),divider.trailingAnchor.constraint(equalTo:sidebar.trailingAnchor,constant:-20),divider.bottomAnchor.constraint(equalTo:sidebar.bottomAnchor,constant:-62)])
-        sidebarContext.font = .systemFont(ofSize:11);sidebarContext.textColor = .rvMuted
-        sidebar.addSubview(sidebarContext);sidebarContext.translatesAutoresizingMaskIntoConstraints=false
-        NSLayoutConstraint.activate([sidebarContext.leadingAnchor.constraint(equalTo:sidebar.leadingAnchor,constant:20),sidebarContext.trailingAnchor.constraint(equalTo:sidebar.trailingAnchor,constant:-18),sidebarContext.bottomAnchor.constraint(equalTo:sidebar.bottomAnchor,constant:-24)])
+        NSLayoutConstraint.activate([sidebarNavigation.leadingAnchor.constraint(equalTo:sidebar.leadingAnchor,constant:8),sidebarNavigation.trailingAnchor.constraint(equalTo:sidebar.trailingAnchor,constant:-8),sidebarNavigation.topAnchor.constraint(equalTo:identity.bottomAnchor,constant:20),sidebarNavigation.bottomAnchor.constraint(equalTo:sidebar.bottomAnchor,constant:-20)])
 
         let heading=vertical(spacing:5);pageTitle.font = .systemFont(ofSize:30,weight:.bold);pageTitle.textColor = .rvInk;heading.addArrangedSubview(pageTitle)
         pageSubtitle.font = .systemFont(ofSize:13);pageSubtitle.textColor = .rvMuted;heading.addArrangedSubview(pageSubtitle)
@@ -493,6 +490,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let stack=vertical(spacing:16)
         let heading=horizontal([label("Supported apps",size:16,weight:.semibold),spacer(),button("Add app…",#selector(addApplication))],spacing:12)
         stack.addArrangedSubview(heading);heading.widthAnchor.constraint(equalTo:stack.widthAnchor).isActive=true
+        let universal=section("Dictation in any app","Use macOS Dictation with the remote’s microphone button, including apps without a profile.")
+        systemDictationAppStatus.font = .systemFont(ofSize:12);systemDictationAppStatus.textColor = .rvMuted
+        universal.addArrangedSubview(systemDictationAppStatus)
+        universal.addArrangedSubview(button("Set up dictation in any app…",#selector(editSystemDictation)))
+        addCard(universal,to:stack)
         let placeholder=AppDropPlaceholder(frame:.zero)
         placeholder.target=self;placeholder.action=#selector(addApplication)
         stack.addArrangedSubview(placeholder)
@@ -554,6 +556,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let routing=section("App switching","Automatically use the active app’s saved controls and dictation shortcut. Other apps use shared controls when configured.")
         followApp.target=self;followApp.action=#selector(changeRouting);routing.addArrangedSubview(followApp)
         routeLabel.font = .systemFont(ofSize:12);routeLabel.textColor = .rvMuted;routing.addArrangedSubview(routeLabel);addCard(routing,to:stack)
+        let universal=section("Dictation in any app","Type with your voice in the focused text field using macOS Dictation.")
+        systemDictationStatus.font = .systemFont(ofSize:12);systemDictationStatus.textColor = .rvMuted
+        universal.addArrangedSubview(systemDictationStatus)
+        universal.addArrangedSubview(button("Configure dictation in any app…",#selector(editSystemDictation)))
+        addCard(universal,to:stack)
         let artwork=section("Remote artwork","Use this remote’s design, or choose a front-facing photo. The same artwork identifies it throughout the app.")
         remoteArtworkPreview.widthAnchor.constraint(equalToConstant:100).isActive=true;remoteArtworkPreview.heightAnchor.constraint(equalToConstant:165).isActive=true
         artworkStatus.font = .systemFont(ofSize:12);artworkStatus.textColor = .rvMuted
@@ -671,16 +678,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         return scrollPage(stack)
     }
     private func showPage(_ page:WorkspacePage) {
+        // A single remote needs no library selection before showing its menu.
+        if libraryDevices.count == 1 { remoteWorkspaceOpen=true }
         if page.isRemoteScoped && !remoteWorkspaceOpen { showPage(.remotes);return }
         if currentPage == .buttons && page != .buttons { controller.cancelLearning() }
         if currentPage == .voice && page != .voice { clearVoiceMicrophoneTest() }
-        if page == .remotes { remoteWorkspaceOpen=false;rebuildRemoteLibrary() }
+        if page == .remotes { remoteWorkspaceOpen=libraryDevices.count == 1;rebuildRemoteLibrary() }
         currentPage=page
         pageTitle.stringValue=page == .overview ? (controller.devicePlugin?.name ?? "Remote overview") : page.title
         pageSubtitle.stringValue=page.isRemoteScoped ? "\(controller.devicePlugin?.name ?? "Remote") · \(page == .buttons ? "App: " + (controller.appPlugin?.name ?? "No specific app") : page.subtitle)" : page.subtitle
         for (key,view) in pages { view.isHidden=key != page }
         sidebarNavigation.update(page:page,remoteName:remoteWorkspaceOpen ? controller.devicePlugin?.name ?? "Selected remote":nil)
-        sidebarContext.stringValue=remoteWorkspaceOpen ? (currentPage == .voice ? "Microphone for this remote" : "Editing profile: \(controller.appPlugin?.name ?? "No specific app")") : "\(libraryDevices.count) \(libraryDevices.count == 1 ? "remote" : "remotes") · \(libraryConnectedCount) connected"
         if !sidebarNavigation.hasKeyboardFocus { window?.makeFirstResponder(nil) }
         refresh()
     }
@@ -725,6 +733,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
         guard controller.config.bindings.indices.contains(selectedIndex) else { selectedIndex=0;return }
         followApp.state=controller.config.followActiveApp ? .on:.off
+        systemDictationStatus.stringValue=controller.systemDictationSummary
+        systemDictationAppStatus.stringValue=controller.systemDictationSummary
         routeLabel.stringValue=controller.config.followActiveApp ? (controller.running ? controller.routingLabel : "Connect remote to follow active app") : "Use only the selected app’s mappings"
         let binding=controller.config.bindings[selectedIndex]
         let signature=controller.config.bindings.map { ($0.controlID ?? "")+$0.name }.joined(separator:"|")
@@ -752,6 +762,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         if binding.action == .dictate {
             let gesture=controller.config.voiceMode == "toggle" ? "Press once to start, again to stop." : "Hold the remote button to dictate."
             actionHelp.stringValue="\(binding.name) → \(appName)\n\(gesture)"
+        }
+        if controller.systemDictationSettings.enabled && binding.controlID == controller.systemDictationSettings.controlID {
+            actionHelp.stringValue += "\nDictation in any app: " + controller.systemDictationSummary
         }
         learnButton.toolTip=learningHelp.stringValue
         bindingPicker.toolTip=hint.stringValue + (binding.usage.map { "\nButton signal: \($0.label)" } ?? "\nButton signal: not linked")
@@ -787,7 +800,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         badge.textColor=controller.connected > 0 ? .systemTeal:.rvMuted
         connectButton.title=controller.running ? "Disconnect" : "Connect remote"
         sidebarNavigation.update(page:currentPage,remoteName:remoteWorkspaceOpen ? controller.devicePlugin?.name ?? "Selected remote":nil)
-        sidebarContext.stringValue=remoteWorkspaceOpen ? (currentPage == .voice ? "Microphone for this remote" : "Editing profile: \(controller.appPlugin?.name ?? "No specific app")") : "\(libraryDevices.count) \(libraryDevices.count == 1 ? "remote" : "remotes") · \(libraryConnectedCount) connected"
         if currentPage.isRemoteScoped {
             pageTitle.stringValue=currentPage == .overview ? (controller.devicePlugin?.name ?? "Remote overview") : currentPage.title
             pageSubtitle.stringValue="\(controller.devicePlugin?.name ?? "Remote") · \(currentPage == .buttons ? "App: " + (controller.appPlugin?.name ?? "No specific app") : currentPage.subtitle)"
@@ -801,6 +813,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         overviewConnection.stringValue=controller.running && controller.connected > 0 ? "Connected · \(controller.devicePlugin?.name ?? "remote")" : "Not connected · choose a device and connect"
         overviewApp.stringValue=noSpecificApp ? (controller.config.followActiveApp ? "Automatic app controls · editing shared fallback":"Shared controls only") : "Editing \(controller.appPlugin?.name ?? "no app") · \(controller.config.followActiveApp ? "Follows the active app":"Uses selected profile")"
         overviewVoice.stringValue=controller.appPlugin?.app?.supports(.dictate) == true ? (controller.config.dictationTested ? "Setup test confirmed · review microphone and shortcut":"Setup needs a microphone, shortcut, and test") : noSpecificApp && controller.config.followActiveApp ? "Uses each active app’s saved dictation shortcut":"The selected app plugin does not provide dictation"
+        if controller.systemDictationSettings.enabled { overviewVoice.stringValue=controller.systemDictationSummary }
         let toggledShortcut=controller.appPlugin?.app?.actions["dictate"]?.operation == "toggle-shortcut"
         confirmed.title=toggledShortcut ? "Matches my app’s start/stop dictation shortcut":"Matches my app’s hold-to-dictate shortcut"
         rebuildPluginList()
@@ -858,6 +871,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc private func learn() { if !controller.running { controller.start() };if controller.running { controller.learn(selectedIndex) } }
     @objc private func cancelLearning() { controller.cancelLearning() }
     @objc private func changeRouting() { var config=controller.config; config.followActiveApp=followApp.state == .on; do { try controller.update(config) } catch { show(error); refresh() } }
+    @objc private func editSystemDictation() {
+        guard systemDictationWindow == nil else { return }
+        controller.stopVoice()
+        let setup=SystemDictationSetup(controller:controller,parent:window)
+        systemDictationWindow=setup
+        setup.finished={ [weak self] in self?.systemDictationWindow=nil;self?.refresh() }
+        setup.show()
+    }
     @objc private func changeAction() { guard actionPicker.indexOfSelectedItem >= 0 else { return };var config=controller.config;config.bindings[selectedIndex].action=controller.availableActions[actionPicker.indexOfSelectedItem];do { try controller.update(config) } catch { show(error) } }
     @objc private func saveVoice() { _ = saveVoiceSettings() }
     private func saveVoiceSettings() -> Bool { var config=controller.config;config.shortcut=shortcut.shortcutValue ?? "";config.shortcutConfirmed=confirmed.state == .on;config.voiceMode=toggle.state == .on ? "toggle":"hold";do { try controller.update(config); return true } catch { show(error);return false } }

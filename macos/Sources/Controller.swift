@@ -56,6 +56,22 @@ final class RemoteController {
     private(set) var dictationStopSummary="Stop timing appears after your next remote dictation stop."
     var actionPlugin:AppPlugin? { config.appPluginID == Configuration.noSpecificAppID ? AppRouting.sharedActions:appPlugin?.app }
     var availableActions: [RemoteAction] { RemoteAction.allCases.filter { actionPlugin?.supports($0) == true || $0 == .native } }
+    var systemDictationSettings:SystemDictationSettings { config.systemDictation[config.devicePluginID] ?? SystemDictationSettings() }
+    var systemDictationSummary:String {
+        let setting=systemDictationSettings
+        guard setting.enabled else { return "Off · use macOS Dictation in text fields across apps." }
+        return (setting.mode == .everywhere ? "Every app":"Fallback for apps without configured dictation") + " · " + setting.shortcutDescription
+    }
+    func saveSystemDictation(_ setting:SystemDictationSettings) throws {
+        try setting.validate()
+        if setting.mode != .off {
+            guard config.bindings.contains(where:{$0.controlID == setting.controlID && $0.usage != nil}) else {
+                throw JustVibeRemoteError.message("Link the selected physical button on the Buttons page first.")
+            }
+        }
+        var next=config;next.systemDictation[next.devicePluginID]=setting
+        try update(next)
+    }
 
     private var cursorControl: CursorSpeedControl?
     private var cursorActive = false
@@ -165,22 +181,23 @@ final class RemoteController {
         guard running,!buttonTestMode else { return }
         let front = foreground()
         let next = AppRouting.resolve(config, apps: catalog.apps, foreground: front)
-        let key = config.followActiveApp || config.appPluginID == Configuration.noSpecificAppID ? (front?.instance ?? "none") + "|" + (next?.appPluginID ?? "native") : config.appPluginID
+        let key = config.followActiveApp || config.appPluginID == Configuration.noSpecificAppID || config.systemDictation[config.devicePluginID]?.enabled == true ? (front?.instance ?? "none") + "|" + (next?.appPluginID ?? "native") : config.appPluginID
         guard force || key != routeKey else { return }
         // Invalidate delayed starts and release the previous app's held shortcut first.
         finishVoice()
         guard !voice.held else { routedConfig = nil; mappingReady = false; return }
         cancelDeleteRepeat()
         routeKey = key; routedConfig = next; mappingReady = false
-        output.plugin = next.flatMap { route in route.appPluginID == Configuration.noSpecificAppID ? AppRouting.sharedActions : (try? catalog.find(route.appPluginID,kind:"app").app) }
+        output.plugin = next.flatMap { AppRouting.outputPlugin($0,apps:catalog.apps) }
         if config.followActiveApp {
             routingLabel=next.map { route in
+                if route.usesSystemDictation { return "Active app: macOS Dictation · \(route.shortcut)" }
                 if route.appPluginID == Configuration.noSpecificAppID { return "Active app: shared controls" }
                 let name=(try? catalog.find(route.appPluginID,kind:"app"))?.name ?? route.appPluginID
                 let hasDictation=route.bindings.contains { $0.action == .dictate }
                 return "Active mapping: \(name)" + (hasDictation && !route.shortcut.isEmpty ? " · Dictation \(route.shortcut)":"")
             } ?? "Active app: original remote actions"
-        } else { routingLabel=config.appPluginID == Configuration.noSpecificAppID ? "Shared controls in the active app":"Using selected app" }
+        } else { routingLabel=next?.usesSystemDictation == true ? "Active app: macOS Dictation" : config.appPluginID == Configuration.noSpecificAppID ? "Shared controls in the active app":"Using selected app" }
         updateMappings()
         changed?()
     }
@@ -239,6 +256,10 @@ final class RemoteController {
             self.changed?()
         }
         activationObserver = NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { [weak self] _ in self?.cancelDeleteRepeat();self?.synchronizeRoute() }
+        output.voiceFailure={ [weak self] error in
+            guard let self else { return }
+            self.finishVoice();self.status=error.localizedDescription;self.changed?()
+        }
         timer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in self?.checkSession() }
     }
     deinit { timer?.invalidate();deleteTimer?.invalidate();if let activationObserver { NSWorkspace.shared.notificationCenter.removeObserver(activationObserver) } }
@@ -287,6 +308,7 @@ final class RemoteController {
     }
     func update(_ proposed: Configuration) throws {
         var newConfig = proposed
+        newConfig.usesSystemDictation=false;newConfig.systemDictationTargetPID=nil
         if let sessionDeviceID, newConfig.devicePluginID != sessionDeviceID {
             throw JustVibeRemoteError.message("Open the other remote from Remotes to configure it.")
         }
@@ -455,9 +477,10 @@ final class RemoteController {
             try AudioInputs.check(config.microphones[config.devicePluginID])
             guard output.plugin?.supports(.dictate) == true else { throw JustVibeRemoteError.message("This app plugin does not provide dictation.") }
             guard route.shortcutConfirmed else { throw JustVibeRemoteError.message("Match the shortcut to the selected app’s dictation setting, then check Confirmed.") }
-            _ = try MacShortcut.parse(route.shortcut)
+            if route.usesSystemDictation { try systemDictationSettings.validate() }
+            else { _ = try MacShortcut.parse(route.shortcut) }
             guard claimVoice?() != false else { throw JustVibeRemoteError.message("Another remote is using voice input. Stop its dictation before starting here.") }
-            if route.followActiveApp {
+            if route.followActiveApp || route.usesSystemDictation {
                 guard output.isTargetFrontmost(route) else { throw JustVibeRemoteError.message("The active app changed. Press the remote button again in your app.") }
             } else { try output.show(route) }
             generation += 1
@@ -475,7 +498,7 @@ final class RemoteController {
                     try AudioInputs.check(self.config.microphones[self.config.devicePluginID])
                     try self.output.beginDictation(route,operation:self.output.plugin?.actions["dictate"]?.operation ?? "hold-shortcut")
                     self.voice.commit(true, now: Date().timeIntervalSince1970)
-                    self.status = "Dictation started · " + self.microphoneSummary
+                    self.status = (route.usesSystemDictation ? "macOS Dictation start shortcut sent · ":"Dictation started · ") + self.microphoneSummary
                 } catch {
                     if self.output.hasVoiceOutput {
                         self.voice.commit(true,now:Date().timeIntervalSince1970)

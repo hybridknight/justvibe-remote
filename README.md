@@ -6,7 +6,7 @@
 
 Use a handheld remote to dictate, send prompts, navigate, and trigger shortcuts in your AI apps. Customize buttons for each app and add remote or app support through plugins.
 
-Built for **macOS 13+ on Apple Silicon** and **Windows x64**. Voice input uses the target app’s dictation feature; compatibility depends on your hardware and plugins.
+Built for **macOS 13+ on Apple Silicon** and **Windows x64**. Voice input uses the target app’s dictation feature, or optional macOS Dictation across apps; compatibility depends on your hardware and plugins.
 
 ## Build and test
 
@@ -39,6 +39,8 @@ After building:
 - **macOS:** open `dist/JustVibe Remote.app`.
 - **Windows:** copy the entire `dist/windows-win-x64` folder to your PC and open `JustVibeRemote.exe`. Keep the folder together; it includes the .NET runtime.
 
+**Test with a real keyboard first.** Open the target app, focus the intended input, and press its shortcut on your keyboard to confirm the action works. For dictation, check whether you must hold the keys while speaking or press once to start and again to stop. Resolve any shortcut or microphone issues in the target app first, then configure the remote with the same keys and matching hold or toggle behavior. For macOS Dictation, test its shortcut in a supported text field before configuring **Dictation in any app**.
+
 On macOS:
 
 1. Open **Remotes**, choose **Set up remote**, and follow the welcome guide.
@@ -48,6 +50,14 @@ On macOS:
 5. Switch to the target app and try the remote. **Follow active app** uses the configured controls for the app in front.
 
 On macOS, **Buttons** tests and learns controls while JustVibe Remote is in front; switch to your target app to use assigned actions.
+
+### Dictation in any app (macOS)
+
+In the remote’s **Apps** or **Settings** page, choose **Dictation in any app**. It is off by default. Enable Dictation in **macOS System Settings → Keyboard**, then choose and confirm the same shortcut option in JustVibe Remote: the microphone key, Control twice, Globe twice, Right/Left/Either Command twice, or Customize. The microphone-key choice uses Apple’s documented Fn+D Dictation command. For Customize, click the recorder and press your modifier-plus-key chord or a function key (F1–F20, including F13). Select a linked microphone button for the remote. Double-press gestures are sent as cancellable, spaced modifier events, and cleanup releases any partly sent gesture.
+
+Choose **Use when app dictation is not configured** to keep configured native app dictation, or **Use in every app** to use macOS Dictation throughout. Click a supported text field, then press the remote button once to start and again to stop. Stop sends Escape rather than toggling an already-ended recording back on. Profile and focus changes cancel delayed starts; cleanup stays addressed to the original app. The app does not query macOS Dictation’s recording state, so avoid mixing manual controls with an active remote session. Verify focus-change cleanup with your apps.
+
+This is a per-remote host setting; no extra app plugin is needed. It does not change app shortcuts, enable macOS Dictation automatically, select another app’s microphone, or record audio itself. macOS handles recognition according to its settings. See [Apple’s Dictation guide](https://support.apple.com/en-gb/guide/mac-help/mh40584/mac). The feature is macOS-only; live speech recognition and focus-change behavior require manual testing.
 
 Microphone testing starts only when you click **Start 5-second test**. A successful preview does not verify which microphone another app uses.
 
@@ -72,7 +82,7 @@ Dictation uses the target app’s microphone permission and selected input. Just
 | [XING WEI 2.4G USB](plugins/bundled/org.justviberemote.device.xingwei-usb/plugin.json) | macOS, Windows | Receiver `1915:1025`, visual button layout |
 | [ChatGPT](plugins/bundled/org.justviberemote.app.chatgpt/README.md) | macOS, Windows | Open app, dictation, Send, Backspace, Escape |
 | [Antigravity](plugins/bundled/org.justviberemote.app.antigravity/README.md) | macOS | Open app, toggle dictation, Send, Backspace, Escape |
-| [Cursor](plugins/bundled/org.justviberemote.app.cursor/README.md) | macOS | Open app, toggle dictation |
+| [Cursor](plugins/bundled/org.justviberemote.app.cursor/README.md) | macOS | Open app, hold-to-talk dictation |
 
 Platforms reflect the manifests. Confirm shortcuts in your app; see each plugin’s notes for setup and testing status. Standard USB and Bluetooth HID remotes can be supported through device plugins. Proprietary protocols and Bluetooth audio need separate verification.
 

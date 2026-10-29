@@ -78,6 +78,50 @@ struct RemotePreferences: Codable, Equatable {
     }
 }
 
+enum SystemDictationMode:String,Codable,CaseIterable {
+    case off, fallback, everywhere
+    var title:String {
+        switch self {
+        case .off:return "Off"
+        case .fallback:return "Use when app dictation is not configured"
+        case .everywhere:return "Use in every app"
+        }
+    }
+}
+enum SystemDictationShortcut:String,Codable,CaseIterable {
+    case microphone,controlTwice,globeTwice,rightCommandTwice,leftCommandTwice,eitherCommandTwice,custom
+    var title:String {
+        switch self {
+        case .microphone:return "Press Microphone Key"
+        case .controlTwice:return "Press Control Key Twice"
+        case .globeTwice:return "Press Globe Key Twice"
+        case .rightCommandTwice:return "Press Right Command Key Twice"
+        case .leftCommandTwice:return "Press Left Command Key Twice"
+        case .eitherCommandTwice:return "Press Either Command Key Twice"
+        case .custom:return "Customize…"
+        }
+    }
+}
+struct SystemDictationSettings:Codable,Equatable {
+    var mode:SystemDictationMode = .off
+    var shortcut=""
+    var confirmed=false
+    var controlID="microphone"
+    // Missing in older settings, which always used a custom chord.
+    var preset:SystemDictationShortcut?
+    var shortcutKind:SystemDictationShortcut { preset ?? .custom }
+    var shortcutDescription:String { shortcutKind == .custom ? shortcut:shortcutKind.title }
+    var enabled:Bool { mode != .off && confirmed && (shortcutKind != .custom || !shortcut.isEmpty) }
+    func validate() throws {
+        guard !controlID.isEmpty,controlID.count<=100 else { throw JustVibeRemoteError.message("Choose a remote button for dictation in any app.") }
+        guard mode != .off else { return }
+        guard confirmed else { throw JustVibeRemoteError.message("Confirm that the shortcut matches macOS Dictation in Keyboard settings.") }
+        guard shortcutKind == .custom else { return }
+        let chord=try MacShortcut.parse(shortcut)
+        guard !chord.flags.isEmpty || MacShortcut.isFunctionKey(chord.key) else { throw JustVibeRemoteError.message("Use a modifier shortcut such as Control+Shift+D, or a function key such as F13.") }
+    }
+}
+
 struct Configuration: Codable {
     static let noSpecificAppID = "justviberemote.no-specific-app"
     var schemaVersion = 1
@@ -97,6 +141,10 @@ struct Configuration: Codable {
     var followActiveApp = true
     var microphones: [String: MicrophonePreference] = [:]
     var cursorSettings: [String: CursorSpeedSettings] = [:]
+    var systemDictation: [String:SystemDictationSettings] = [:]
+    // Runtime routing only: never encode foreground identity or overwrite app settings.
+    var usesSystemDictation=false
+    var systemDictationTargetPID:Int32?
     var dictationTested = false
     var autoConnect = false
     var suppressOriginal = true
@@ -130,7 +178,7 @@ struct Configuration: Codable {
         }
     }
     private enum CodingKeys: String, CodingKey {
-        case schemaVersion, remoteSetupCompleted, remoteSetupCheckpoint, profile, devicePluginID, appPluginID, bindings, voiceMode, shortcut, shortcutConfirmed, targetAppPath, suppressOriginal, bindingSets, remotePreferences, dictationTested, autoConnect, appMappings, followActiveApp, microphones, cursorSettings
+        case schemaVersion, remoteSetupCompleted, remoteSetupCheckpoint, profile, devicePluginID, appPluginID, bindings, voiceMode, shortcut, shortcutConfirmed, targetAppPath, suppressOriginal, bindingSets, remotePreferences, dictationTested, autoConnect, appMappings, followActiveApp, microphones, cursorSettings, systemDictation
     }
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
@@ -152,6 +200,7 @@ struct Configuration: Codable {
         appMappings = try values.decodeIfPresent([String: AppMapping].self, forKey: .appMappings) ?? [:]
         followActiveApp = try values.decodeIfPresent(Bool.self, forKey: .followActiveApp) ?? false
         cursorSettings = try values.decodeIfPresent([String: CursorSpeedSettings].self, forKey: .cursorSettings) ?? [:]
+        systemDictation = try values.decodeIfPresent([String:SystemDictationSettings].self, forKey: .systemDictation) ?? [:]
         microphones = try values.decodeIfPresent([String: MicrophonePreference].self, forKey: .microphones) ?? [:]
         remotePreferences = try values.decodeIfPresent([String: RemotePreferences].self, forKey: .remotePreferences) ?? [:]
         bindingSets = try values.decodeIfPresent([String: [Binding]].self, forKey: .bindingSets) ?? [:]
@@ -183,6 +232,8 @@ struct Configuration: Codable {
         try self.profile.validate()
         guard remotePreferences.count <= 256, cursorSettings.count <= 256 else { throw JustVibeRemoteError.message("Too many remote or cursor profiles.") }
         for setting in cursorSettings.values { try setting.validate() }
+        guard systemDictation.count<=256 else { throw JustVibeRemoteError.message("Too many dictation profiles.") }
+        for setting in systemDictation.values { try setting.validate() }
         guard self.schemaVersion == 1, (1...64).contains(self.bindings.count),
               ["hold", "toggle"].contains(self.voiceMode), self.appMappings.count <= 256,
               self.appMappings.values.allSatisfy({ (1...64).contains($0.bindings.count) && ["hold", "toggle"].contains($0.voiceMode) }),
@@ -271,9 +322,12 @@ struct ToggleShortcutLease {
         try down();active=true;pendingKeyUp=true;stopSent=false
         try up();pendingKeyUp=false
     }
-    mutating func stop(down:() throws -> Void,up:() throws -> Void) throws {
+    mutating func stop(down:() throws -> Void,up:() throws -> Void,releaseStart:(() throws -> Void)? = nil) throws {
         guard active else { return }
-        if pendingKeyUp { try up();pendingKeyUp=false }
+        if pendingKeyUp && !stopSent {
+            if let releaseStart { try releaseStart() } else { try up() }
+            pendingKeyUp=false
+        }
         if !stopSent { try down();stopSent=true;pendingKeyUp=true }
         if pendingKeyUp { try up();pendingKeyUp=false }
         active=false
