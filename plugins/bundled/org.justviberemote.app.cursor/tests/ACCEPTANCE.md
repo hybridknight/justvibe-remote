@@ -1,24 +1,22 @@
 # Cursor acceptance record
 
-- Plugin: org.justviberemote.app.cursor 1.0.0; author metadata: JustVibe Remote.
-- Declared platform: macOS; schema/API 3/3, shortcuts adapter.
-- App identity: Cursor 3.27.22, com.todesktop.230313mzl4w4u92, read from local Info.plist on 2026-10-29.
-- Shortcut evidence: user supplied CTRL+M and confirmed press-to-start / press-to-stop.
-- Official validator: PASS on 2026-10-29 (exit 0).
-  Command: `dotnet run --project windows/JustVibeRemote.PluginTool -- validate plugins/bundled/org.justviberemote.app.cursor`
-  Result: `Valid API v3 app plugin: org.justviberemote.app.cursor 1.0.0 (macos)`. A CSSM_ModuleLoad diagnostic preceded the successful result.
-- Automated checks: PASS on 2026-10-29. `./scripts/test-macos.sh`: 261 core checks and 130 remote-session checks. Includes bundled Cursor discovery, target identity, toggle Control+M defaults, and explicit shortcut confirmation. `dotnet run --project windows/JustVibeRemote.Tests/JustVibeRemote.Tests.csproj -- .`: 183 Windows core checks; this is not a Windows runtime test. macOS session checks emitted NSWorkspace notification diagnostics but exited 0.
-- Runtime source changes: none; bundled package, tests, and documentation only.
+- Plugin: org.justviberemote.app.cursor 1.0.2; macOS, schema/API 3/3.
+- Identity: Cursor 3.27.22, com.todesktop.230313mzl4w4u92, locally inspected on 2026-10-29.
+- Required behavior: the user explicitly requested Control+M taps for dictation, not a held chord. Version 1.0.2 uses toggle-shortcut: one complete tap on start, another on stop.
+- Cursor keyboard settings remain unchanged. No custom glass.dictate override or separate dictation app is installed by this change.
+- Source-code Hold to Talk defaults from one Cursor window are not evidence of the user’s desired tap behavior. Verify the actual target window separately.
+- Official semantic validation: PASS (exit 0). `dotnet run --project windows/JustVibeRemote.PluginTool -- validate /Users/hybridknight/workspace/justvibe-remote/plugins/bundled/org.justviberemote.app.cursor` returned `Valid API v3 app plugin: org.justviberemote.app.cursor 1.0.2 (macos)`. A CSSM_ModuleLoad diagnostic preceded success.
+- Automated checks: PASS (exit 0). `scripts/test-macos.sh`: 294 core checks and 138 remote-session checks, including the Cursor toggle-shortcut declaration and toggle lease start/stop/cleanup checks. Session tests emitted a nonfatal NSWorkspace notification diagnostic. These checks do not inject keys or record audio.
+- Earlier live success used a temporary custom Cursor toggle binding; it does not verify version 1.0.2 with unmodified Cursor keybindings.
 - License: undecided.
 
-## Live checks — all untested
+## Live checks — pending for 1.0.2
 
-- Bundled package appears after app update/reload; Focus finds Cursor.
-- User confirms the shortcut against Cursor settings; remote starts and stops dictation.
-- Stop, disconnect, timeout, reload, and focus loss clean up the session without targeting unrelated apps.
-- Configure the same remote button differently in Cursor and a second profile; test both and native fallback in an unsupported app.
-- Change focus during dictation and delayed starts; verify cleanup/cancellation without changing the editor profile or writing settings on every focus change.
-- Overlapping Cursor targets stay inactive until uniquely configured; remove the earlier community copy from the installed plugin root before testing bundled routing.
-- Verify microphone choice inside Cursor and actual remote behavior. No recording or key injection was performed by automated checks.
+- Confirm Control+M starts/stops native dictation from the keyboard in the intended Cursor window, then verify the remote.
+- Remote toggle activation: first press sends one tap; second press sends another. No Control+M chord stays held between presses.
+- Stop, disconnect, timeout, reload, and focus loss send cleanup to the original target without toggling voice in unrelated apps.
+- Switch between Cursor, another configured app profile, and an unsupported app. Change focus during a delayed start and while recording; confirm cleanup without altering the editor profile.
+- Overlapping target matches remain inactive until uniquely configured.
+- Verify microphone choice and speech recognition inside Cursor. No automated test should start a recording or inject keys.
 
-Windows and hardware support are not claimed by static validation.
+Windows and physical-device support are not claimed by static validation.

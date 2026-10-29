@@ -101,6 +101,34 @@ struct Configuration: Codable {
     var autoConnect = false
     var suppressOriginal = true
     init() {}
+    /// Hardware signals belong to a remote; each app retains its own action.
+    mutating func linkButton(at index:Int,to usage:Usage) {
+        guard bindings.indices.contains(index) else { return }
+        let control=bindings[index]
+        func linked(_ saved:[Binding]) -> [Binding] {
+            let match=saved.firstIndex { binding in
+                if let id=control.controlID,let savedID=binding.controlID { return id == savedID }
+                return binding.name.caseInsensitiveCompare(control.name) == .orderedSame
+            }
+            return saved.enumerated().map { offset,binding in
+                var next=binding
+                if offset == match { next.usage=usage }
+                else if next.usage == usage { next.usage=nil }
+                return next
+            }
+        }
+        // Update the chosen index even for legacy lists with duplicate names.
+        for other in bindings.indices where other != index && bindings[other].usage == usage { bindings[other].usage=nil }
+        bindings[index].usage=usage;dictationTested=false
+        let prefix=devicePluginID + "|"
+        for key in Array(bindingSets.keys) where key.hasPrefix(prefix) { bindingSets[key]=linked(bindingSets[key]!) }
+        for key in Array(appMappings.keys) where key.hasPrefix(prefix) {
+            var mapping=appMappings[key]!
+            let updated=linked(mapping.bindings)
+            if updated != mapping.bindings { mapping.bindings=updated;mapping.dictationTested=false }
+            appMappings[key]=mapping
+        }
+    }
     private enum CodingKeys: String, CodingKey {
         case schemaVersion, remoteSetupCompleted, remoteSetupCheckpoint, profile, devicePluginID, appPluginID, bindings, voiceMode, shortcut, shortcutConfirmed, targetAppPath, suppressOriginal, bindingSets, remotePreferences, dictationTested, autoConnect, appMappings, followActiveApp, microphones, cursorSettings
     }

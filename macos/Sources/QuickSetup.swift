@@ -26,11 +26,12 @@ final class QuickSetup: NSObject, NSWindowDelegate {
     private var previewPermissionCount:Int?
     private let visualCaption=NSTextField(wrappingLabelWithString:"")
     private let appPicker=NSPopUpButton(),buttonPicker=NSPopUpButton(),actionPicker=NSPopUpButton(),micPicker=NSPopUpButton()
-    private let shortcut=NSTextField(string:"")
+    private let shortcut=ShortcutRecorder(frame:.zero)
     private let voiceChoice=NSButton(checkboxWithTitle:"Set up voice input too (optional)",target:nil,action:nil)
     private let toggle=NSButton(checkboxWithTitle:"Press once to start voice, again to stop",target:nil,action:nil)
     private let reconnect=NSButton(checkboxWithTitle:"Connect this remote automatically when I open JustVibe Remote",target:nil,action:nil)
     private var primary:NSButton!,back:NSButton!,later:NSButton!
+    private var receiverConnectButton:NSButton?,receiverHelpButton:NSButton?
     private var inputs:[AudioInput]=[]
     private var selectedIndex:Int
     private var visibleStage:RemoteSetupStage?
@@ -38,16 +39,21 @@ final class QuickSetup: NSObject, NSWindowDelegate {
     private var inputPermissionRow:SetupChecklistRow?,shortcutPermissionRow:SetupChecklistRow?
     private var microphoneHelp=NSTextField(wrappingLabelWithString:"")
     private var microphoneDefaultButton:NSButton?
+    private var microphoneButtonHint:NSTextField?,microphoneLockedHint:NSTextField?
+    private var microphoneButtonStep:VoiceSetupStepView?,microphoneInputStep:VoiceSetupStepView?
+    private var microphoneControls:NSStackView?
     private var milestoneRows:[SetupMilestoneView]=[]
     private var setupActions:[RemoteAction] { controller.availableActions.filter { $0 != .dictate } }
+    private var suggestedShortcut:String? { try? controller.appPlugin?.app?.shortcut(.dictate) }
+    private var initialShortcut:String { SetupShortcut.initialValue(saved:controller.config.shortcut,confirmed:controller.config.shortcutConfirmed,suggested:suggestedShortcut) }
     var finished:(() -> Void)?
 
     init(controller: RemoteController, parent: NSWindow) {
         self.controller=controller;self.parent=parent;wasRunning=controller.running
         let saved=controller.config.remoteSetupCheckpoint
         checkpoint=saved?.stage != .done ? saved ?? RemoteSetupCheckpoint() : RemoteSetupCheckpoint()
-        checkpoint=checkpoint.resuming(appAvailable:controller.appPlugin != nil,inputAllowed:RemoteInput.allowed,shortcutsAllowed:TargetOutput.allowed,connected:controller.running && controller.connected>0)
         if controller.appPlugin?.app?.supports(.dictate) != true { checkpoint.wantsVoice=false }
+        checkpoint=checkpoint.resuming(appAvailable:controller.appPlugin != nil,inputAllowed:RemoteInput.allowed,shortcutsAllowed:TargetOutput.allowed,connected:controller.running && controller.connected>0)
         selectedIndex=checkpoint.controlID.flatMap { id in controller.config.bindings.firstIndex { $0.controlID == id } }
             ?? controller.config.bindings.firstIndex { $0.controlID == "ok" || $0.name == "OK" }
             ?? controller.config.bindings.firstIndex { $0.controlID != "microphone" } ?? 0
@@ -55,7 +61,8 @@ final class QuickSetup: NSObject, NSWindowDelegate {
         super.init()
         panel.title="Set up \(controller.devicePlugin?.name ?? "your remote")";panel.delegate=self;panel.isReleasedWhenClosed=false;panel.appearance=NSAppearance(named:.aqua)
         build()
-        shortcut.stringValue=controller.config.shortcut
+        shortcut.setShortcut(initialShortcut)
+        shortcut.changed={ [weak self] in self?.refresh() }
         toggle.state=controller.config.voiceMode == "toggle" ? .on:.off
         reconnect.state=controller.config.autoConnect ? .on:.off
         voiceChoice.state=checkpoint.wantsVoice ? .on:.off
@@ -149,8 +156,8 @@ final class QuickSetup: NSObject, NSWindowDelegate {
             add(button("Having trouble? Check connection…",#selector(checkConnection)))
         case .receiver:
             heading.stringValue="Connect your remote.";lead.stringValue="Plug in the USB receiver or pair \(controller.config.profile.name) in macOS Bluetooth settings. Then connect it below."
-            add(button(controller.running ? "Reconnect this remote":"Connect this remote",#selector(connect)))
-            add(button("Connection help…",#selector(checkConnection)))
+            receiverConnectButton=button("Connect this remote",#selector(connect));add(receiverConnectButton!)
+            receiverHelpButton=button("Connection help…",#selector(checkConnection));add(receiverHelpButton!)
         case .button:
             heading.stringValue="Make the buttons yours.";lead.stringValue="Keep the existing controls and continue, or choose a button to customize for \(app). You can change buttons later in remote settings."
             buttonPicker.removeAllItems();buttonPicker.addItems(withTitles:controller.config.bindings.map(\.name));buttonPicker.selectItem(at:selectedIndex)
@@ -160,17 +167,34 @@ final class QuickSetup: NSObject, NSWindowDelegate {
             actionPicker.target=self;actionPicker.action=#selector(changeAction);actionPicker.setAccessibilityLabel("Action for this button");add(text("In \(app), this button will…",size:13,weight:.semibold));add(actionPicker)
             note("Linking identifies the button. It won’t run its assigned action while learning.")
         case .microphone:
-            heading.stringValue="Add voice to your remote.";lead.stringValue="Link the microphone button, then choose the remote’s USB microphone."
-            learningLink=button("Link microphone button",#selector(learnMicrophone));learningCancel=button("Cancel learning",#selector(cancelLearning));add(learningLink!);add(learningCancel!)
+            heading.stringValue="Add voice to your remote.";lead.stringValue="Set up a button for dictation in \(app), then check your remote’s microphone."
+            let buttonStep=VoiceSetupStepView(number:1,title:"Dictation button");microphoneButtonStep=buttonStep;add(buttonStep)
+            buttonStep.widthAnchor.constraint(equalTo:content.widthAnchor).isActive=true
+            let buttonHint=text("",size:13,color:.rvMuted);microphoneButtonHint=buttonHint;buttonStep.content.addArrangedSubview(buttonHint)
+            buttonHint.widthAnchor.constraint(equalTo:buttonStep.content.widthAnchor).isActive=true
+            learningLink=button("Set up button",#selector(learnMicrophone));learningCancel=button("Cancel",#selector(cancelLearning))
+            let linking=NSStackView(views:[learningLink!,learningCancel!]);linking.spacing=8;buttonStep.content.addArrangedSubview(linking)
+            let inputStep=VoiceSetupStepView(number:2,title:"Microphone");microphoneInputStep=inputStep;add(inputStep)
+            inputStep.widthAnchor.constraint(equalTo:content.widthAnchor).isActive=true
+            let lockedHint=text("Next, choose the remote’s microphone and check your voice with a short test.",size:13,color:.rvMuted);microphoneLockedHint=lockedHint;inputStep.content.addArrangedSubview(lockedHint)
+            lockedHint.widthAnchor.constraint(equalTo:inputStep.content.widthAnchor).isActive=true
+            let controls=NSStackView();vertical(controls,spacing:12);microphoneControls=controls;inputStep.content.addArrangedSubview(controls)
+            controls.widthAnchor.constraint(equalTo:inputStep.content.widthAnchor).isActive=true
+            let inputHint=text("Choose the remote’s USB microphone. You can record a short clip and play it back to check your voice.",size:12,color:.rvMuted)
+            controls.addArrangedSubview(inputHint);inputHint.widthAnchor.constraint(equalTo:controls.widthAnchor).isActive=true
             inputs=AudioInputs.list();micPicker.removeAllItems();micPicker.addItem(withTitle:"Choose the remote’s microphone…")
             for input in inputs { micPicker.addItem(withTitle:input.name + (input.usb ? " · USB":"")) }
             if let saved=controller.config.microphones[controller.config.devicePluginID],let index=inputs.firstIndex(where:{$0.id == saved.id}) { micPicker.selectItem(at:index+1) }
-            micPicker.setAccessibilityLabel("Remote USB microphone");micPicker.target=self;micPicker.action=#selector(changeMicrophone);add(micPicker)
-            let test=SetupMicrophoneTest(controller:controller);audioTest=test;add(test)
-            test.widthAnchor.constraint(equalTo:content.widthAnchor).isActive=true;changeMicrophone()
-            microphoneHelp.font = .systemFont(ofSize:12);microphoneHelp.textColor = .rvMuted;add(microphoneHelp)
-            microphoneDefaultButton=button("Use selected microphone as system input",#selector(useSelectedMicrophone));add(microphoneDefaultButton!)
-            note("Select the same microphone in \(app)’s settings.")
+            micPicker.setAccessibilityLabel("Remote USB microphone");micPicker.target=self;micPicker.action=#selector(changeMicrophone);controls.addArrangedSubview(micPicker)
+            let test=SetupMicrophoneTest(controller:controller);audioTest=test;controls.addArrangedSubview(test)
+            test.widthAnchor.constraint(equalTo:controls.widthAnchor).isActive=true;changeMicrophone()
+            microphoneHelp.font = .systemFont(ofSize:12);microphoneHelp.textColor = .rvMuted;controls.addArrangedSubview(microphoneHelp)
+            microphoneHelp.widthAnchor.constraint(equalTo:controls.widthAnchor).isActive=true
+            microphoneDefaultButton=button("Use selected microphone as system input",#selector(useSelectedMicrophone));controls.addArrangedSubview(microphoneDefaultButton!)
+            let appHint=text("Select the same microphone in \(app)’s settings.",size:12,color:.rvMuted);controls.addArrangedSubview(appHint)
+            appHint.widthAnchor.constraint(equalTo:controls.widthAnchor).isActive=true
+            let optionalHint=text("The audio test is optional. Click Continue when you’re ready.",size:12,color:.rvMuted);controls.addArrangedSubview(optionalHint)
+            optionalHint.widthAnchor.constraint(equalTo:controls.widthAnchor).isActive=true
             add(button("Set up voice later",#selector(skipVoice)))
         case .shortcut:
             heading.stringValue="Match your app’s shortcut."
@@ -180,14 +204,17 @@ final class QuickSetup: NSObject, NSWindowDelegate {
                 add(text("Settings  ›  Keyboard Shortcuts",size:17,weight:.semibold))
                 note("1. Open \(app) → Settings (⌘,).")
                 note("2. Choose Keyboard Shortcuts and search “dictation”.")
-                note("3. Find the hold-to-dictate command. Enter its keys below, then try them in the app’s composer.")
+                note("3. Find the dictation command. Click the shortcut field below and press the same keys, then try them in the app’s composer.")
                 note("Choose dictation for entering text. The Voice chat hotkey starts a live conversation.")
                 if controller.appPlugin?.id == "org.justviberemote.app.chatgpt" { add(button("Open \(app) settings…",#selector(openAppSettings))) }
                 else { add(button("Open \(app)",#selector(openApp))) }
             } else { add(button("Open \(app)",#selector(openApp))) }
             add(text("Same shortcut in both apps",size:13,weight:.semibold))
-            shortcut.placeholderString="For example: CTRL+SHIFT+D";shortcut.setAccessibilityLabel("App dictation shortcut");add(shortcut)
-            note("Use CMD for ⌘, CTRL for ⌃, ALT for ⌥, and SHIFT for ⇧. Join keys with +.")
+            shortcut.setAccessibilityLabel("App dictation shortcut");add(shortcut)
+            shortcut.widthAnchor.constraint(equalTo:content.widthAnchor).isActive=true
+            shortcut.heightAnchor.constraint(equalToConstant:36).isActive=true
+            if let suggested=suggestedShortcut { note("Suggested by the \(app) plugin: \(suggested). Continue saves the keys entered above.") }
+            note("Click the field, then press your shortcut, such as Control + M. Esc cancels; Tab moves to the next control.")
             add(toggle)
             note("Turn this off if you prefer to hold the remote’s button while talking.")
             if openAI { add(button("View official shortcut guide",#selector(openShortcutGuide))) }
@@ -216,6 +243,8 @@ final class QuickSetup: NSObject, NSWindowDelegate {
         }
         back.isEnabled=stage != .welcome && stage != .done;back.isHidden=stage == .done;later.isHidden=stage == .done;primary.isEnabled=true
         primary.title=stage == .welcome ? "Get started":stage == .practice ? (checkpoint.wantsVoice ? "I see my text":"The button works"):stage == .done ? "Open remote":"Continue"
+        feedback.textColor = .rvMuted
+        illustration.contentTintColor = .rvAccent
         switch stage {
         case .permissions:
             let inputAllowed=previewPermissionCount.map { $0>=1 } ?? RemoteInput.allowed
@@ -228,7 +257,14 @@ final class QuickSetup: NSObject, NSWindowDelegate {
             feedback.stringValue=primary.isEnabled ? "Everything is checked. Continue to connect your remote.":"Complete both items to continue. Return here after allowing access."
         case .receiver:
             primary.isEnabled=controller.running && controller.connected>0
-            feedback.stringValue=primary.isEnabled ? "Receiver connected.":controller.status
+            receiverConnectButton?.isHidden=primary.isEnabled
+            receiverHelpButton?.isHidden=primary.isEnabled
+            receiverConnectButton?.title=controller.running ? "Reconnect this remote":"Connect this remote"
+            heading.stringValue=primary.isEnabled ? "Your remote is connected.":"Connect your remote."
+            lead.stringValue=primary.isEnabled ? "Click Continue to set up your remote’s controls.":"Plug in the USB receiver or pair \(controller.config.profile.name) in macOS Bluetooth settings. Then connect it below."
+            feedback.stringValue=primary.isEnabled ? "✓ Receiver connected. Ready to continue.":controller.status
+            feedback.textColor=primary.isEnabled ? .systemGreen:.rvMuted
+            illustration.contentTintColor=primary.isEnabled ? .systemGreen:.rvAccent
         case .button:
             let binding=controller.config.bindings[selectedIndex]
             learningCancel?.isHidden=controller.learningIndex == nil
@@ -238,25 +274,38 @@ final class QuickSetup: NSObject, NSWindowDelegate {
             feedback.stringValue=controller.learningIndex != nil ? "Press only \(binding.name) on the physical remote, or cancel learning to continue…":binding.usage == nil || binding.action == .native ? "Ready to continue with the existing controls. Customizing a button is optional.":"\(binding.name) is linked. Action: \(binding.action.title). You can continue when ready."
         case .microphone:
             if controller.learningIndex == nil { changeMicrophone() }
-            learningCancel?.isHidden=controller.learningIndex == nil
-            learningLink?.isEnabled=controller.learningIndex == nil
+            let learning=controller.learningIndex != nil
+            learningCancel?.isHidden = !learning
+            learningLink?.isEnabled = !learning && controller.running && controller.connected>0
             let linked=controller.microphoneIndex.map { controller.config.bindings[$0].usage != nil && controller.config.bindings[$0].action == .dictate } ?? false
-            primary.isEnabled=linked && controller.learningIndex == nil && micPicker.indexOfSelectedItem>0
+            let buttonComplete=linked && !learning
+            primary.isEnabled=buttonComplete && micPicker.indexOfSelectedItem>0
+            microphoneButtonStep?.update(completed:buttonComplete,current:!buttonComplete,status:learning ? "Waiting for your press":buttonComplete ? "Linked":"Start here")
+            microphoneInputStep?.update(completed:primary.isEnabled,current:buttonComplete && !primary.isEnabled,status:primary.isEnabled ? "Selected":buttonComplete ? "Choose an input":"Up next")
+            microphoneButtonHint?.stringValue=learning ? "Press and release the microphone button on your real remote now.":buttonComplete ? "Your remote’s button is ready for dictation.":"Click Set up button, then press and release the microphone button on your real remote."
+            microphoneButtonHint?.textColor=buttonComplete ? .systemGreen:learning ? .rvAccent:.rvInk
+            learningLink?.title=learning ? "Listening for button…":linked ? "Change button":"Set up button"
+            microphoneControls?.isHidden = !buttonComplete
+            microphoneLockedHint?.isHidden=buttonComplete
             let audioIndex=micPicker.indexOfSelectedItem-1
             let input=inputs.indices.contains(audioIndex) ? inputs[audioIndex]:nil
+            audioTest?.isHidden=input == nil
+            microphoneHelp.isHidden=input == nil
             let matches=input?.id == AudioInputs.defaultID()
             let protected=controller.config.microphones[controller.config.devicePluginID]?.guardDictation ?? true
             microphoneHelp.stringValue=input == nil ? "Choose the remote’s microphone before testing." : matches ? "The system input matches this microphone." : protected ? "The system input is different. Match it below for protected dictation, or review the safeguard in Voice & microphone." : "Choose this input in your dictation app too."
             microphoneDefaultButton?.isHidden = !protected || matches || input == nil
-            feedback.stringValue=controller.learningIndex != nil ? "Press the microphone button on the remote…":linked ? (input == nil ? "Microphone button linked. Choose its USB audio input.":"Microphone selected. Test it here, then continue to your app’s shortcut."):"Link the microphone button to continue, or set up voice later."
+            feedback.stringValue = !controller.running || controller.connected == 0 ? "Reconnect your remote to set up dictation.":""
         case .practice:
             primary.isEnabled=controller.running && controller.connected>0 && RemoteInput.allowed && TargetOutput.allowed
             if !primary.isEnabled { feedback.stringValue="Reconnect this remote before testing. Use Back to review setup." }
             else if controller.voiceActive { feedback.stringValue="Voice shortcut active. Finish speaking, then check the result in your app." }
             else { feedback.stringValue=controller.status.hasPrefix("Connected ·") ? "Open your app to try it, then return here.":controller.status }
         case .app: primary.isEnabled=appPicker.selectedItem?.representedObject is String
+        case .shortcut: primary.isEnabled=shortcut.shortcutValue != nil
         default: break
         }
+        feedback.isHidden=feedback.stringValue.isEmpty
         let diagram=[RemoteSetupStage.button,.microphone].contains(stage)
         canvas.isHidden = !diagram;illustration.isHidden=diagram || stage == .welcome || stage == .permissions || stage == .done
         checkmarkArtwork.isHidden=stage != .permissions && stage != .done
@@ -266,7 +315,7 @@ final class QuickSetup: NSObject, NSWindowDelegate {
             let index=stage == .microphone ? controller.microphoneIndex ?? selectedIndex:selectedIndex
             canvas.update(layout:controller.remoteLayout,bindings:controller.config.bindings,selection:stage == .welcome ? nil:controller.config.bindings[index].controlID,active:controller.activeUsages)
         } else {
-            let symbol=stage == .permissions ? "hand.raised.circle":stage == .receiver ? "cable.connector":stage == .app ? "app.badge":stage == .shortcut ? "keyboard":stage == .done ? "checkmark.circle":"sparkles"
+            let symbol=stage == .permissions ? "hand.raised.circle":stage == .receiver ? (primary.isEnabled ? "checkmark.circle.fill":"cable.connector"):stage == .app ? "app.badge":stage == .shortcut ? "keyboard":stage == .done ? "checkmark.circle":"sparkles"
             illustration.image=NSImage(systemSymbolName:symbol,accessibilityDescription:nil)
         }
         if stage == .permissions { visualCaption.stringValue="\(checkmarkArtwork.completed) of 2 permissions complete";visualCaption.textColor=checkmarkArtwork.completed == 2 ? .systemGreen:.rvMuted;return }
@@ -289,12 +338,13 @@ final class QuickSetup: NSObject, NSWindowDelegate {
                 if id != controller.config.appPluginID {
                     try controller.selectPlugins(deviceID:controller.config.devicePluginID,appID:id)
                     checkpoint.wantsVoice=checkpoint.wantsVoice && controller.appPlugin?.app?.supports(.dictate) == true
-                    shortcut.stringValue=controller.config.shortcut
+                    shortcut.setShortcut(initialShortcut)
                 }
                 move(to:.permissions)
             } catch { feedback.stringValue=error.localizedDescription }
         case .shortcut:
-            do { var config=controller.config;config.shortcut=shortcut.stringValue;config.shortcutConfirmed=true;config.voiceMode=toggle.state == .on ? "toggle":"hold";try controller.update(config);move(to:.practice) }
+            guard let keys=shortcut.shortcutValue else { return }
+            do { var config=controller.config;config.shortcut=keys;config.shortcutConfirmed=true;config.voiceMode=toggle.state == .on ? "toggle":"hold";try controller.update(config);move(to:.practice) }
             catch { feedback.stringValue=error.localizedDescription }
         case .microphone:
             let index=micPicker.indexOfSelectedItem-1;guard inputs.indices.contains(index) else { return }
@@ -314,7 +364,7 @@ final class QuickSetup: NSObject, NSWindowDelegate {
     @objc private func changeVoiceChoice() { checkpoint.wantsVoice=voiceChoice.state == .on;do { try controller.saveSetupCheckpoint(checkpoint) } catch { feedback.stringValue=error.localizedDescription } }
     @objc private func changeApp() {
         guard let id=appPicker.selectedItem?.representedObject as? String else { return }
-        do { try controller.selectPlugins(deviceID:controller.config.devicePluginID,appID:id);checkpoint.wantsVoice=checkpoint.wantsVoice && controller.appPlugin?.app?.supports(.dictate) == true;voiceChoice.state=checkpoint.wantsVoice ? .on:.off;shortcut.stringValue=controller.config.shortcut;try controller.saveSetupCheckpoint(checkpoint);rebuildContent();refresh() }
+        do { try controller.selectPlugins(deviceID:controller.config.devicePluginID,appID:id);checkpoint.wantsVoice=checkpoint.wantsVoice && controller.appPlugin?.app?.supports(.dictate) == true;voiceChoice.state=checkpoint.wantsVoice ? .on:.off;shortcut.setShortcut(initialShortcut);try controller.saveSetupCheckpoint(checkpoint);rebuildContent();refresh() }
         catch { feedback.stringValue=error.localizedDescription }
     }
     @objc private func chooseRemoteArtwork() {

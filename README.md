@@ -1,12 +1,36 @@
 # JustVibe Remote
 
-<img src="assets/branding/JustVibeRemote.svg" width="160" alt="JustVibe Remote: a silver remote with a microphone button over code bars" />
-
 **Talk to your agent.**
+
+<img src="assets/branding/JustVibeRemote.svg" width="160" alt="JustVibe Remote: a silver remote with a microphone button over code bars" />
 
 Use a handheld remote to dictate, send prompts, navigate, and trigger shortcuts in your AI apps. Customize buttons for each app and add remote or app support through plugins.
 
 Built for **macOS 13+ on Apple Silicon** and **Windows x64**. Voice input uses the target app’s dictation feature; compatibility depends on your hardware and plugins.
+
+## Build and test
+
+**macOS:** install Apple Command Line Tools. Configure a persistent development signer once, then test and build:
+
+```sh
+python3 scripts/local-signing.py setup
+./scripts/test-macos.sh
+./scripts/build-macos.sh
+```
+
+Signing setup creates a local code-signing identity and may request authorization. Alternatively, set `JUSTVIBEREMOTE_SIGNING_IDENTITY` to your Apple Development or Developer ID identity.
+
+**Windows:** install the .NET 10 SDK and run from PowerShell:
+
+```powershell
+./scripts/build-windows.ps1
+```
+
+Run the portable Windows core tests on macOS, Windows, or Linux:
+
+```sh
+dotnet run --project windows/JustVibeRemote.Tests/JustVibeRemote.Tests.csproj -- .
+```
 
 ## Get started
 
@@ -23,9 +47,23 @@ On macOS:
 4. For voice, confirm the app’s dictation shortcut, choose and test the remote’s microphone, and select the same input inside the target app. Save your voice settings.
 5. Switch to the target app and try the remote. **Follow active app** uses the configured controls for the app in front.
 
-On macOS, **Buttons** tests and learns controls while JustVibe Remote is in front; switch to your target app to use assigned actions. If permissions appear enabled but connection fails, use **Connection check…** and restart after granting access.
+On macOS, **Buttons** tests and learns controls while JustVibe Remote is in front; switch to your target app to use assigned actions.
 
 Microphone testing starts only when you click **Start 5-second test**. A successful preview does not verify which microphone another app uses.
+
+## Privacy settings
+
+On macOS, open **System Settings → Privacy & Security** and enable **JustVibe Remote** under:
+
+| Permission | Purpose |
+| --- | --- |
+| Input Monitoring | Read button events from the selected remote. |
+| Accessibility | Send configured shortcuts to your apps. |
+| Microphone | Optional: record a five-second local microphone test when you start it. |
+
+Approve the exact app you built, then restart JustVibe Remote. If access still fails, open **Connection check…**, reset only the affected permission, and add the current app again. Screen Recording and Full Disk Access are not required.
+
+Dictation uses the target app’s microphone permission and selected input. JustVibe Remote does not upload the local test audio. See [trust and local data](docs/TRUST.md) for details.
 
 ## Bundled plugins
 
@@ -52,37 +90,19 @@ Validate with the .NET 10 SDK:
 dotnet run --project windows/JustVibeRemote.PluginTool -- validate /absolute/path/to/plugin-folder
 ```
 
-## Build and test
-
-**macOS:** install Apple Command Line Tools. Configure a persistent development signer once, then test and build:
-
-```sh
-python3 scripts/local-signing.py setup
-./scripts/test-macos.sh
-./scripts/build-macos.sh
-```
-
-Signing setup creates a local code-signing identity and may request authorization. Alternatively, set `JUSTVIBEREMOTE_SIGNING_IDENTITY` to your Apple Development or Developer ID identity.
-
-**Windows:** install the .NET 10 SDK and run from PowerShell:
-
-```powershell
-./scripts/build-windows.ps1
-```
-
-Run the portable Windows core tests on macOS, Windows, or Linux:
-
-```sh
-dotnet run --project windows/JustVibeRemote.Tests/JustVibeRemote.Tests.csproj -- .
-```
-
 ## Status and limitations
 
 These are development builds. Local macOS builds are not Apple-notarized; the Windows package has been compiled but has not been run on Windows. The user has verified macOS microphone recording/playback and remote-triggered ChatGPT dictation; the latest ChatGPT shortcut change has not been retested live.
 
 Windows custom actions run alongside native button actions. On macOS, multiple remotes require distinct receiver hardware IDs. Remote cursor settings adjust native speed and acceleration only; physical calibration is not supported.
 
-JustVibe Remote has no telemetry, network client, or audio uploads. Target apps handle their own dictation and privacy behavior. See [trust and local data](docs/TRUST.md) and [architecture](docs/ARCHITECTURE.md).
+## Privacy
+
+JustVibe Remote runs entirely locally. It has no network client, telemetry, or audio uploads. It does not store microphone recordings or dictated text. Optional microphone-test audio stays in memory and is discarded when you close the test or delete the clip.
+
+Your settings, button mappings, plugin files, and selected remote artwork are saved locally on your computer. Target apps handle dictation separately and may send audio to their own services; their privacy policies apply.
+
+See [trust and local data](docs/TRUST.md) and [architecture](docs/ARCHITECTURE.md) for details.
 
 Shared guides live in `docs/`. Local development notes, research, and artwork prompts belong in `doc/`, which is ignored by Git.
 

@@ -395,13 +395,9 @@ final class RemoteController {
         changed?()
         if let index = learning {
             guard down else { return }
-            for other in config.bindings.indices where other != index && config.bindings[other].usage == usage {
-                config.bindings[other].usage = nil
-            }
-            config.bindings[index].usage = usage
-            config.dictationTested = false
+            var next=config;next.linkButton(at:index,to:usage)
             learning = nil
-            do { try store.save(config); synchronizeRoute(force: true); status = "Learned \(config.bindings[index].name): \(usage.label)" }
+            do { try store.save(next);config=next;synchronizeRoute(force: true);status = "Linked \(config.bindings[index].name) for all apps on this remote: \(usage.label)" }
             catch { status = error.localizedDescription }
             changed?()
             return

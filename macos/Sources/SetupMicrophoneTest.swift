@@ -13,24 +13,25 @@ final class SetupMicrophoneTest: NSStackView {
     private let result = NSTextField(wrappingLabelWithString: "Choose a microphone, then start a short test.")
     private var startButton: NSButton!, stopButton: NSButton!, playButton: NSButton!, clearButton: NSButton!
 
-    init(controller: RemoteController) {
+    init(controller: RemoteController,showTitle:Bool = true) {
         self.controller = controller
         super.init(frame: .zero)
         orientation = .vertical; alignment = .leading; spacing = 10
         let title = NSTextField(labelWithString: "Test your microphone here")
-        title.font = .systemFont(ofSize: 15, weight: .semibold); addArrangedSubview(title)
+        title.font = .systemFont(ofSize: 15, weight: .semibold); if showTitle { addArrangedSubview(title) }
         meter.minValue = 0; meter.maxValue = 100; meter.levelIndicatorStyle = .continuousCapacity
         meter.setAccessibilityLabel("Microphone input level")
         addArrangedSubview(meter); meter.widthAnchor.constraint(equalTo: widthAnchor).isActive = true
         result.font = .systemFont(ofSize: 12); result.textColor = .rvMuted
         addArrangedSubview(result); result.widthAnchor.constraint(equalTo: widthAnchor).isActive = true
-        startButton = NSButton(title: "Start 5-second test", target: self, action: #selector(startTest))
+        startButton = PrimaryButton(title: "Record 5 seconds", target: self, action: #selector(startTest));startButton.isBordered=false
+        startButton.widthAnchor.constraint(equalToConstant:160).isActive=true;startButton.heightAnchor.constraint(equalToConstant:36).isActive=true
         stopButton = NSButton(title: "Stop", target: self, action: #selector(stopTest))
         playButton = NSButton(title: "Play back", target: self, action: #selector(playClip))
         clearButton = NSButton(title: "Clear", target: self, action: #selector(clearClip))
         let controls = NSStackView(views: [startButton, stopButton, playButton, clearButton]); controls.spacing = 8
         addArrangedSubview(controls)
-        let help = NSTextField(wrappingLabelWithString: "Press Start, then speak near the remote. Hold its mic button if needed. Play back to check your voice. The clip stays in memory and is deleted when you leave this step.")
+        let help = NSTextField(wrappingLabelWithString: "Speak near the remote while recording. Hold its microphone button if needed. Your clip stays on this computer and is cleared when you leave.")
         help.font = .systemFont(ofSize: 12); help.textColor = .rvMuted; addArrangedSubview(help)
         help.widthAnchor.constraint(equalTo: widthAnchor).isActive = true
         updateButtons()
@@ -39,7 +40,8 @@ final class SetupMicrophoneTest: NSStackView {
     func select(_ input: AudioInput?) {
         guard self.input?.id != input?.id else { return }
         reset(); self.input = input
-        result.stringValue = input.map { "Ready to test \($0.name). Recording starts only when you press Start." } ?? "Choose a microphone before testing."
+        result.stringValue = input.map { "Ready to record from \($0.name)." } ?? "Choose a microphone before recording."
+        result.textColor = .rvMuted
         updateButtons()
     }
     private func updateButtons() {
@@ -47,12 +49,16 @@ final class SetupMicrophoneTest: NSStackView {
         stopButton.isEnabled = audio.recording || waiting
         playButton.isEnabled = audio.hasClip && !audio.recording && !waiting
         clearButton.isEnabled = audio.hasClip && !audio.recording && !waiting
+        stopButton.isHidden = !audio.recording && !waiting
+        playButton.isHidden = !audio.hasClip || audio.recording || waiting
+        clearButton.isHidden = !audio.hasClip || audio.recording || waiting
     }
     @objc private func startTest() {
         guard active, !waiting, !audio.recording, let input else { return }
         reset(); controller.beginMicrophoneTest(); suspended = true
         let request = UUID(); token = request; waiting = true; updateButtons()
         result.stringValue = "Waiting for microphone access…"
+        result.textColor = .rvMuted
         let begin: (Bool) -> Void = { [weak self] granted in
             guard let self, self.active, self.token == request, self.input?.id == input.id else { return }
             self.waiting = false
@@ -87,6 +93,7 @@ final class SetupMicrophoneTest: NSStackView {
     @objc private func stopTest() {
         token = UUID(); waiting = false; timer?.invalidate(); timer = nil; audio.stop(); meter.doubleValue = 0
         result.stringValue = audio.sampleCount == 0 ? "No audio received. Hold the remote’s mic button while speaking, then retry." : !audio.hasSignal ? "Audio arrived, but it was silent. Check the mic button and input volume, then retry." : "✓ Audio received. Play back to check that you can hear your voice."
+        result.textColor=audio.hasSignal ? .systemGreen:.rvMuted
         // Keep mapped actions paused through playback; release when leaving or clearing.
         if !audio.hasClip { releaseRemote() }
         updateButtons()
@@ -100,4 +107,60 @@ final class SetupMicrophoneTest: NSStackView {
     }
     func close() { active = false; reset(); updateButtons() }
     deinit { timer?.invalidate(); audio.clear() }
+}
+
+/// The everyday test surface. Selection is saved per remote; audio is opened
+/// only by the explicit Start button in SetupMicrophoneTest.
+final class VoiceMicrophonePanel:NSStackView {
+    private let controller:RemoteController
+    private let picker=NSPopUpButton()
+    private let status=NSTextField(wrappingLabelWithString:"")
+    private let test:SetupMicrophoneTest
+    private var inputs:[AudioInput]=[]
+    private var closed=false
+    init(controller:RemoteController) {
+        self.controller=controller;test=SetupMicrophoneTest(controller:controller,showTitle:false)
+        super.init(frame:.zero)
+        orientation = .vertical;alignment = .leading;spacing=18
+        let inputLabel=NSTextField(labelWithString:"AUDIO INPUT");inputLabel.font = .systemFont(ofSize:10,weight:.semibold);inputLabel.textColor = .rvMuted;addArrangedSubview(inputLabel)
+        picker.target=self;picker.action=#selector(selectInput);picker.setAccessibilityLabel("Microphone for this remote")
+        let refresh=NSButton(title:"Refresh inputs",target:self,action:#selector(reload))
+        let row=NSStackView(views:[picker,refresh]);row.spacing=8;addArrangedSubview(row)
+        row.widthAnchor.constraint(equalTo:widthAnchor).isActive=true
+        picker.setContentCompressionResistancePriority(.defaultLow,for:.horizontal)
+        status.font = .systemFont(ofSize:12);status.textColor = .rvMuted
+        addArrangedSubview(status)
+        let levelLabel=NSTextField(labelWithString:"INPUT LEVEL");levelLabel.font = .systemFont(ofSize:10,weight:.semibold);levelLabel.textColor = .rvMuted;addArrangedSubview(levelLabel)
+        addArrangedSubview(test)
+        test.widthAnchor.constraint(equalTo:widthAnchor).isActive=true
+        status.widthAnchor.constraint(equalTo:widthAnchor).isActive=true
+        reload()
+    }
+    required init?(coder:NSCoder) { fatalError("init(coder:) is not used") }
+    private var selected:AudioInput? {
+        let index=picker.indexOfSelectedItem-1
+        return inputs.indices.contains(index) ? inputs[index]:nil
+    }
+    @objc private func reload() {
+        guard !closed else { return }
+        let id=selected?.id ?? controller.config.microphones[controller.config.devicePluginID]?.id
+        test.select(nil);inputs=AudioInputs.list();picker.removeAllItems();picker.addItem(withTitle:"Choose the remote’s microphone…")
+        for input in inputs { picker.addItem(withTitle:input.name + (input.usb ? " · USB":"")) }
+        if let index=inputs.firstIndex(where:{$0.id == id}) { picker.selectItem(at:index+1) }
+        status.stringValue=selected != nil ? "Selected for this remote.":id != nil ? "The saved microphone is unavailable. Reconnect it and refresh, or choose another input.":"Choose the microphone you want to hear."
+        test.select(selected)
+    }
+    @objc private func selectInput() {
+        guard !closed else { return };test.select(nil)
+        guard let input=selected else { status.stringValue="Choose a microphone to test.";return }
+        do {
+            var config=controller.config
+            let protect=config.microphones[config.devicePluginID]?.guardDictation ?? true
+            config.microphones[config.devicePluginID]=MicrophonePreference(id:input.id,name:input.name,guardDictation:protect)
+            try controller.update(config)
+            test.select(input);status.stringValue="Selected for this remote."
+        } catch { reload();status.stringValue=error.localizedDescription }
+    }
+    func close() { guard !closed else { return };closed=true;test.close() }
+    deinit { test.close() }
 }

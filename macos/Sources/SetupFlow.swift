@@ -1,5 +1,14 @@
 import Foundation
 
+enum SetupShortcut {
+    /// An old, unconfirmed default should not override the plugin's current suggestion.
+    /// Confirmed custom keys remain authoritative; this is only an editable setup draft.
+    static func initialValue(saved:String,confirmed:Bool,suggested:String?) -> String {
+        guard !confirmed,let suggested,!suggested.isEmpty else { return saved }
+        return suggested
+    }
+}
+
 enum SetupStep: String {
     case inputPermission, shortcutPermission, receiver, microphone, shortcut, test, ready
 }
@@ -41,7 +50,7 @@ enum RemoteSetupStage: String, Codable, CaseIterable {
         case .welcome: return .app
         case .app: return .permissions
         case .permissions: return .receiver
-        case .receiver: return .button
+        case .receiver: return voice ? .microphone : .button
         case .button: return voice ? .microphone : .practice
         case .microphone: return .shortcut
         case .shortcut: return .practice
@@ -55,7 +64,7 @@ enum RemoteSetupStage: String, Codable, CaseIterable {
         case .permissions: return .app
         case .receiver: return .permissions
         case .button: return .receiver
-        case .microphone: return .button
+        case .microphone: return .receiver
         case .shortcut: return .microphone
         case .practice: return voice ? .shortcut : .button
         case .done: return .practice
@@ -72,6 +81,7 @@ struct RemoteSetupCheckpoint: Codable, Equatable {
         if !appAvailable { next.stage = .app }
         else if stage != .app && (!inputAllowed || !shortcutsAllowed) { next.stage = .permissions }
         else if stage.milestone > 2 && !connected { next.stage = .receiver }
+        else if stage == .button && wantsVoice { next.stage = .microphone }
         return next
     }
 }

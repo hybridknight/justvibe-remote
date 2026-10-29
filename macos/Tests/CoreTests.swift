@@ -7,6 +7,29 @@ import Foundation
             guard condition else { fatalError("FAIL: \(message)") }
             count += 1
         }
+        check(TargetOutput.toggleEventPID(target:101,foreground:101) == nil,"foreground toggle dictation uses the normal keyboard event path")
+        check(TargetOutput.toggleEventPID(target:101,foreground:202) == 101,"focus-loss cleanup targets the original process, never the new foreground app")
+        check(TargetOutput.toggleEventPID(target:101,foreground:nil) == 101,"cleanup without a foreground app stays process-targeted")
+        final class ToggleApplicationFixture:ToggleShortcutApplication {
+            var processIdentifier:Int32=101
+            var isTerminated=false
+            var bundleIdentifier:String?="test.cursor"
+            var launchDate:Date?
+        }
+        let currentApplication=ToggleApplicationFixture()
+        let toggleTarget=ToggleShortcutTarget(currentApplication,foregroundPID:currentApplication.processIdentifier)
+        check(toggleTarget != nil,"a foreground app can own toggle dictation without requiring a Launch Services launch date")
+        check(toggleTarget?.liveApplication(resolve:{_ in currentApplication})?.processIdentifier == currentApplication.processIdentifier,"toggle cleanup retains and resolves its original live process")
+        check(ToggleShortcutTarget(currentApplication,foregroundPID:nil) == nil,"toggle dictation cannot start without a foreground target")
+        check(ToggleShortcutTarget(currentApplication,foregroundPID:currentApplication.processIdentifier + 1) == nil,"toggle dictation cannot start in a different foreground process")
+        check(toggleTarget?.liveApplication(resolve:{_ in nil}) == nil,"cleanup discards a target that no longer resolves")
+        let replacement=ToggleApplicationFixture();replacement.bundleIdentifier="test.other"
+        check(toggleTarget?.liveApplication(resolve:{_ in replacement}) == nil,"cleanup rejects a different app even with the same process ID")
+        replacement.bundleIdentifier=currentApplication.bundleIdentifier;replacement.launchDate=Date()
+        check(toggleTarget?.liveApplication(resolve:{_ in replacement}) == nil,"cleanup rejects a changed launch identity")
+        replacement.launchDate=nil;currentApplication.isTerminated=true
+        check(toggleTarget?.liveApplication(resolve:{_ in replacement}) == nil,"a terminated original instance cannot target a replacement with a reused PID and missing launch dates")
+        check(ToggleShortcutTarget(currentApplication,foregroundPID:101) == nil,"a terminated instance cannot acquire toggle ownership")
         var events:[String]=[],toggleLease=ToggleShortcutLease()
         try toggleLease.start(down:{events.append("down")},up:{events.append("up")})
         check(toggleLease.active && events == ["down","up"],"toggle dictation starts with one complete tap")
@@ -144,8 +167,19 @@ import Foundation
         setup.receiverConnected = true; setup.needsDictation = false; setup.microphoneLinked = false; setup.shortcutConfirmed = false; setup.testConfirmed = false
         check(setup.step == .ready, "non-dictation app skips voice setup")
         check(RemoteSetupStage.welcome.next(voice:true) == .app,"setup starts with welcome before app choices")
+        check(SetupShortcut.initialValue(saved:"CTRL+SHIFT+D",confirmed:false,suggested:"CTRL+M") == "CTRL+M","setup refreshes an unconfirmed old shortcut from the plugin suggestion")
+        check(SetupShortcut.initialValue(saved:"CTRL+SHIFT+D",confirmed:true,suggested:"CTRL+M") == "CTRL+SHIFT+D","setup preserves a confirmed custom shortcut")
+        check(SetupShortcut.initialValue(saved:"CMD+D",confirmed:false,suggested:nil) == "CMD+D","setup retains saved keys when the plugin has no dictation suggestion")
+        check(SetupShortcut.initialValue(saved:"CMD+D",confirmed:false,suggested:"") == "CMD+D","an empty plugin suggestion cannot erase the saved shortcut")
         check(RemoteSetupStage.app.next(voice:true) == .permissions,"the app choice precedes permission requests")
         check(RemoteSetupStage.permissions.next(voice:true) == .receiver,"setup requires connection after permissions")
+        check(RemoteSetupStage.receiver.next(voice:true) == .microphone,"voice setup goes directly from connection to the dictation button and microphone")
+        check(RemoteSetupStage.receiver.next(voice:false) == .button,"buttons-only setup keeps button customization")
+        check(RemoteSetupStage.microphone.previous(voice:true) == .receiver,"Back from voice setup returns to connection without a button customization detour")
+        var legacyButtonSetup=RemoteSetupCheckpoint();legacyButtonSetup.stage = .button
+        check(legacyButtonSetup.resuming(appAvailable:true,inputAllowed:true,shortcutsAllowed:true,connected:true).stage == .microphone,"saved voice setup skips the old button customization page")
+        legacyButtonSetup.wantsVoice=false
+        check(legacyButtonSetup.resuming(appAvailable:true,inputAllowed:true,shortcutsAllowed:true,connected:true).stage == .button,"saved buttons-only setup retains customization")
         check(RemoteSetupStage.button.next(voice:false) == .practice,"buttons-only journey skips optional voice")
         check(RemoteSetupStage.button.next(voice:true) == .microphone,"voice journey includes microphone selection")
         check(RemoteSetupStage.practice.previous(voice:false) == .button,"Back follows the buttons-only branch")
@@ -258,8 +292,8 @@ import Foundation
         let cursor=try catalog.find("org.justviberemote.app.cursor",kind:"app")
         check(cursor.app?.targets["macos"]?.bundleIds == ["com.todesktop.230313mzl4w4u92"],"bundled Cursor targets the inspected desktop application")
         let cursorConfig=try PluginSelection.select(defaults,catalog:catalog,deviceID:defaults.devicePluginID,appID:cursor.id)
-        check(cursorConfig.shortcut == "CTRL+M" && cursorConfig.voiceMode == "toggle" && !cursorConfig.shortcutConfirmed,"Cursor defaults to toggle Control+M and requires confirmation")
-        check(cursor.app?.actions["dictate"]?.operation == "toggle-shortcut","Cursor uses separate start and stop taps")
+        check(cursorConfig.shortcut == "CTRL+M" && cursorConfig.voiceMode == "toggle" && !cursorConfig.shortcutConfirmed,"Cursor defaults to press-once remote activation with confirmed Control+M")
+        check(cursor.app?.actions["dictate"]?.operation == "toggle-shortcut","Cursor sends complete Control+M start and stop taps without holding the shortcut")
         let antigravity=try catalog.find("org.justviberemote.app.antigravity",kind:"app")
         check(antigravity.name == "Antigravity" && antigravity.app?.targets["macos"]?.bundleIds == ["com.google.antigravity"],"bundled Antigravity targets the inspected desktop application")
         check(antigravity.app?.supports(.focus) == true && antigravity.app?.supports(.send) == true,"Antigravity exposes the existing app-control actions")
@@ -305,6 +339,38 @@ import Foundation
         perApp.followActiveApp = true
         let codexFront = ForegroundApp(bundleID: "com.openai.codex", name: "Codex", path: original.targetAppPath, instance: "1")
         let editorFront = ForegroundApp(bundleID: "com.example.editor", name: "Example Editor", path: "/Applications/Editor.app", instance: "2")
+        var sharedLinks=perApp
+        let sharedIndex=sharedLinks.bindings.firstIndex { $0.controlID == "microphone" }!
+        let editorKey=AppRouting.key(sharedLinks.devicePluginID,editorID)
+        let otherRemoteKey=AppRouting.key(sharedLinks.devicePluginID + ".other",editorID)
+        sharedLinks.bindingSets[otherRemoteKey]=sharedLinks.bindings
+        sharedLinks.appMappings[otherRemoteKey]=AppMapping(sharedLinks)
+        // Profiles may save their controls in a different order.
+        sharedLinks.appMappings[editorKey]?.bindings.reverse()
+        let beforeLinks=sharedLinks
+        let learnedUsage=Usage(page:12,code:0xCF)
+        sharedLinks.linkButton(at:sharedIndex,to:learnedUsage)
+        check(sharedLinks.bindings[sharedIndex].usage == learnedUsage,"learning updates the active app's physical button")
+        check(sharedLinks.bindingSets[editorKey]?.first(where:{$0.controlID == "microphone"})?.usage == learnedUsage,"existing binding sets receive the same hardware link")
+        check(sharedLinks.appMappings[editorKey]?.bindings.first(where:{$0.controlID == "microphone"})?.usage == learnedUsage,"existing app mappings receive links by stable control ID regardless of order")
+        check(sharedLinks.appMappings[editorKey]?.bindings.map(\.action) == beforeLinks.appMappings[editorKey]?.bindings.map(\.action),"sharing a hardware link preserves every app action")
+        check(sharedLinks.appMappings[editorKey]?.shortcut == beforeLinks.appMappings[editorKey]?.shortcut && sharedLinks.appMappings[editorKey]?.voiceMode == beforeLinks.appMappings[editorKey]?.voiceMode && sharedLinks.appMappings[editorKey]?.targetAppPath == beforeLinks.appMappings[editorKey]?.targetAppPath,"sharing links preserves each app's shortcuts, activation mode and target")
+        check(sharedLinks.appMappings[otherRemoteKey]?.bindings == beforeLinks.appMappings[otherRemoteKey]?.bindings && sharedLinks.bindingSets[otherRemoteKey] == beforeLinks.bindingSets[otherRemoteKey],"linking never changes another remote, including similar device IDs")
+        check(AppRouting.resolve(sharedLinks,apps:catalog.apps,foreground:codexFront)?.bindings.first(where:{$0.controlID == "microphone"})?.usage == learnedUsage && AppRouting.resolve(sharedLinks,apps:catalog.apps,foreground:editorFront)?.bindings.first(where:{$0.controlID == "microphone"})?.usage == learnedUsage,"focus changes use the shared physical link in both configured apps")
+        check(AppRouting.resolve(sharedLinks,apps:catalog.apps,foreground:ForegroundApp(bundleID:"unknown",name:"Other")) == nil,"sharing links does not activate an unsupported app")
+        let restoredLinks=try JSONDecoder().decode(Configuration.self,from:JSONEncoder().encode(sharedLinks))
+        let switchedLinks=try PluginSelection.select(restoredLinks,catalog:catalog,deviceID:sharedLinks.devicePluginID,appID:editorID)
+        check(switchedLinks.bindings.first(where:{$0.controlID == "microphone"})?.usage == learnedUsage && switchedLinks.bindings.first(where:{$0.controlID == "microphone"})?.action == .escape,"shared links survive saving and selecting an existing app without copying actions")
+        let newAppLinks=try PluginSelection.select(sharedLinks,catalog:catalog,deviceID:sharedLinks.devicePluginID,appID:antigravity.id)
+        check(newAppLinks.bindings.first(where:{$0.controlID == "microphone"})?.usage == learnedUsage,"apps added later inherit the learned physical link")
+        var conflictLinks=sharedLinks
+        let reassignedUsage=conflictLinks.bindings.first(where:{$0.controlID == "ok"})!.usage!
+        conflictLinks.linkButton(at:sharedIndex,to:reassignedUsage)
+        check(conflictLinks.bindings.first(where:{$0.controlID == "ok"})?.usage == nil && conflictLinks.appMappings[editorKey]?.bindings.first(where:{$0.controlID == "ok"})?.usage == nil && conflictLinks.bindingSets[editorKey]?.first(where:{$0.controlID == "ok"})?.usage == nil,"relinking clears duplicate physical signals consistently across app profiles")
+        var legacyLinks=sharedLinks
+        legacyLinks.appMappings[editorKey]?.bindings=sharedLinks.bindings.map { binding in var old=binding;old.controlID=nil;return old }
+        legacyLinks.linkButton(at:sharedIndex,to:learnedUsage)
+        check(legacyLinks.appMappings[editorKey]?.bindings.first(where:{$0.name == sharedLinks.bindings[sharedIndex].name})?.usage == learnedUsage,"legacy controls without stable IDs share links through their existing names")
         let editRoute = AppRouting.resolve(perApp, apps: catalog.apps, foreground: editorFront)
         check(editRoute?.bindings[0].action == .escape && editRoute?.appPluginID == editorID, "foreground editor uses its saved button action")
         check(AppRouting.resolve(perApp, apps: catalog.apps, foreground: codexFront)?.bindings[0].action == .dictate, "foreground Codex uses its different action")

@@ -35,6 +35,36 @@ final class SetupChecklistRow: NSView {
     }
 }
 
+/// Two numbered cards keep the voice setup sequence visible without a task counter.
+final class VoiceSetupStepView: NSView {
+    let content=NSStackView()
+    private let icon=NSImageView()
+    private let status=NSTextField(labelWithString:"")
+    private let number:Int
+    init(number:Int,title:String) {
+        self.number=number
+        super.init(frame:.zero)
+        wantsLayer=true;layer?.cornerRadius=14;layer?.borderWidth=1
+        let name=NSTextField(labelWithString:title);name.font = .systemFont(ofSize:16,weight:.semibold);name.textColor = .rvInk
+        icon.widthAnchor.constraint(equalToConstant:26).isActive=true;icon.heightAnchor.constraint(equalToConstant:26).isActive=true
+        status.font = .systemFont(ofSize:11,weight:.semibold)
+        let space=NSView();space.setContentHuggingPriority(.init(1),for:.horizontal)
+        let header=NSStackView(views:[icon,name,space,status]);header.spacing=10;header.alignment = .centerY
+        content.orientation = .vertical;content.alignment = .leading;content.spacing=12
+        let stack=NSStackView(views:[header,content]);stack.orientation = .vertical;stack.alignment = .leading;stack.spacing=14
+        addSubview(stack);stack.translatesAutoresizingMaskIntoConstraints=false
+        NSLayoutConstraint.activate([stack.leadingAnchor.constraint(equalTo:leadingAnchor,constant:18),stack.trailingAnchor.constraint(equalTo:trailingAnchor,constant:-18),stack.topAnchor.constraint(equalTo:topAnchor,constant:18),stack.bottomAnchor.constraint(equalTo:bottomAnchor,constant:-18),header.widthAnchor.constraint(equalTo:stack.widthAnchor),content.widthAnchor.constraint(equalTo:stack.widthAnchor)])
+    }
+    required init?(coder:NSCoder) { fatalError("init(coder:) is not used") }
+    func update(completed:Bool,current:Bool,status text:String) {
+        let tint:NSColor=completed ? .systemGreen:current ? .rvAccent:.rvMuted
+        icon.image=NSImage(systemSymbolName:completed ? "checkmark.circle.fill":"\(number).circle\(current ? ".fill":"")",accessibilityDescription:completed ? "Completed":current ? "Current step":"Next step")
+        icon.contentTintColor=tint;status.stringValue=text;status.textColor=tint
+        layer?.backgroundColor=(completed ? NSColor.systemGreen.withAlphaComponent(0.04):current ? NSColor.rvAccent.withAlphaComponent(0.04):NSColor(white:0.98,alpha:1)).cgColor
+        layer?.borderColor=tint.withAlphaComponent(current || completed ? 0.25:0.12).cgColor
+    }
+}
+
 final class SetupMilestoneView: NSView {
     private let icon=NSImageView()
     private let label:NSTextField

@@ -11,7 +11,7 @@ enum WorkspacePage: String, CaseIterable {
         case .plugins: return "Plugins"
         case .overview: return "Overview"
         case .buttons: return "Buttons"
-        case .voice: return "Voice & microphone"
+        case .voice: return "Microphone test"
         case .apps: return "Apps"
         case .devices: return "Remote settings"
         case .help: return "Help & setup"
@@ -19,7 +19,7 @@ enum WorkspacePage: String, CaseIterable {
     }
     var sidebarTitle: String {
         switch self {
-        case .voice: return "Voice & mic"
+        case .voice: return "Microphone"
         case .devices: return "Settings"
         default: return title
         }
@@ -30,7 +30,7 @@ enum WorkspacePage: String, CaseIterable {
         case .plugins: return "Browse installed support for your remotes and apps."
         case .overview: return "Set up this remote, then choose its apps and button actions."
         case .buttons: return "Choose a button, link it, then pick what it does."
-        case .voice: return "Connect your microphone and your app’s dictation shortcut."
+        case .voice: return "Check the audio from your remote."
         case .apps: return "Apps supported by this remote."
         case .devices: return "Connection, cursor, and behavior settings for this remote."
         case .help: return "Guided setup and troubleshooting, when you need them."

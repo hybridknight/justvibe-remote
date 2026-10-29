@@ -10,8 +10,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var microphoneWindow: MicrophoneTest?
     private var cursorWindow: CursorSetup?
     private var addRemoteFlow:AddRemoteFlow?
-    private let dictationStopStatus=NSTextField(wrappingLabelWithString: "")
-    private let microphoneStatus = NSTextField(wrappingLabelWithString: "")
+    private let voiceMicrophoneHost=NSStackView()
+    private var voiceMicrophonePanel:VoiceMicrophonePanel?
+    private weak var voiceMicrophoneController:RemoteController?
+    private var voiceTestClosing=false
     private var window: NSWindow!
     private let canvas = RemoteCanvas()
     private var mappingBoard:RemoteMappingBoard!
@@ -34,7 +36,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private let progress = NSTextField(labelWithString: "")
     private let status = NSTextField(wrappingLabelWithString: "")
     private let badge = NSTextField(labelWithString: "  Not connected  ")
-    private let shortcut = NSTextField(string: "")
+    private let shortcut = ShortcutRecorder(frame:.zero)
     private let confirmed = NSButton(checkboxWithTitle: "Matches my app’s hold-to-dictate shortcut", target:nil, action:nil)
     private let toggle = NSButton(checkboxWithTitle: "Press once to start, again to stop",target:nil,action:nil)
     private let suppress = NSButton(checkboxWithTitle: "Replace original actions for mapped buttons",target:nil,action:nil)
@@ -69,18 +71,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private let overviewVoice = NSTextField(wrappingLabelWithString: "")
     private let sidebarContext = NSTextField(wrappingLabelWithString: "")
     private var overviewAction: NSButton!
-    private let voiceSupport = NSTextField(wrappingLabelWithString: "")
     private let pluginSummary = NSTextField(wrappingLabelWithString: "")
     private let pluginSearch=NSSearchField()
     private let pluginFilter=NSSegmentedControl(labels:["All","Remotes","Apps"],trackingMode:.selectOne,target:nil,action:nil)
     private let pluginList=NSStackView()
     private var pluginListSignature=""
-    private let voiceDiagnostics = NSStackView()
     private let remoteArtworkPreview=RemoteArtworkView(frame:.zero)
     private let overviewArtwork=RemoteArtworkView(frame:.zero)
     private let artworkStatus=NSTextField(wrappingLabelWithString:"")
     private var resetArtworkButton:NSButton!
-    private var voiceOnlyControls: [NSControl] = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let readOnly=SingleInstanceLock.isReadOnly(CommandLine.arguments)
@@ -222,11 +221,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         showPage(.remotes)
     }
 
-    private func scrollPage(_ content:NSStackView)->NSView {
+    private func scrollPage(_ content:NSStackView,maximumWidth:CGFloat? = nil)->NSView {
         let scroll=NSScrollView();scroll.drawsBackground=false;scroll.hasVerticalScroller=true;scroll.autohidesScrollers=true
         let document=WorkspaceDocument();document.translatesAutoresizingMaskIntoConstraints=false;scroll.documentView=document
         content.translatesAutoresizingMaskIntoConstraints=false;document.addSubview(content)
-        NSLayoutConstraint.activate([document.widthAnchor.constraint(equalTo:scroll.contentView.widthAnchor),content.leadingAnchor.constraint(equalTo:document.leadingAnchor),content.trailingAnchor.constraint(equalTo:document.trailingAnchor),content.topAnchor.constraint(equalTo:document.topAnchor),content.bottomAnchor.constraint(equalTo:document.bottomAnchor)])
+        NSLayoutConstraint.activate([document.widthAnchor.constraint(equalTo:scroll.contentView.widthAnchor),content.leadingAnchor.constraint(equalTo:document.leadingAnchor),content.topAnchor.constraint(equalTo:document.topAnchor),content.bottomAnchor.constraint(equalTo:document.bottomAnchor)])
+        if let maximumWidth {
+            let fill=content.widthAnchor.constraint(equalTo:document.widthAnchor);fill.priority = .defaultHigh
+            NSLayoutConstraint.activate([fill,content.widthAnchor.constraint(lessThanOrEqualToConstant:maximumWidth),content.trailingAnchor.constraint(lessThanOrEqualTo:document.trailingAnchor)])
+        } else { content.trailingAnchor.constraint(equalTo:document.trailingAnchor).isActive=true }
         return scroll
     }
     private func section(_ title:String,_ detail:String? = nil)->NSStackView {
@@ -442,24 +445,49 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
     private func makeVoice()->NSView {
         let stack=vertical(spacing:16)
-        voiceSupport.font = .systemFont(ofSize:12);voiceSupport.textColor = .rvMuted;stack.addArrangedSubview(voiceSupport)
-        let mic=section("1 · Choose and test your microphone","Choose the remote’s USB microphone here, then select the same microphone in your dictation app.")
-        mic.addArrangedSubview(button("Open microphone test…",#selector(testMicrophone)))
-        microphoneStatus.font = .systemFont(ofSize:12);microphoneStatus.textColor = .rvMuted;mic.addArrangedSubview(microphoneStatus);addCard(mic,to:stack)
-        let voice=section("2 · Match your app’s dictation shortcut","Use the same dictation shortcut configured in the app you want to control.")
-        shortcut.placeholderString="For example: CTRL+M";shortcut.setAccessibilityLabel("Dictation shortcut");shortcut.widthAnchor.constraint(equalToConstant:240).isActive=true
-        voice.addArrangedSubview(shortcut);voice.addArrangedSubview(confirmed);voice.addArrangedSubview(toggle)
-        let save=button("Save voice settings",#selector(saveVoice),primary:true),test=button("Try dictation",#selector(testVoice))
-        voiceOnlyControls=[shortcut,confirmed,toggle,save,test]
-        voice.addArrangedSubview(horizontal([save,test,spacer()],spacing:10))
-        voice.addArrangedSubview(label("Voice changes take effect when saved. Try dictation also saves these settings.",size:11,color:.rvMuted));addCard(voice,to:stack)
-        let link=section("3 · Link the microphone button","Choose Dictation as the microphone button’s action, then link it to the physical remote.")
-        link.addArrangedSubview(button("Configure microphone button →",#selector(openMicrophoneButton)));addCard(link,to:stack)
-        let details=section("Troubleshooting")
-        details.addArrangedSubview(button("Show voice diagnostics",#selector(toggleVoiceDiagnostics)))
-        voiceDiagnostics.orientation = .vertical;voiceDiagnostics.alignment = .leading;voiceDiagnostics.isHidden=true
-        dictationStopStatus.font = .systemFont(ofSize:11);dictationStopStatus.textColor = .rvMuted;voiceDiagnostics.addArrangedSubview(dictationStopStatus);details.addArrangedSubview(voiceDiagnostics);addCard(details,to:stack)
-        return scrollPage(stack)
+        let mic=section("Hear your remote", "Choose a microphone, record a short clip, then play it back.")
+        voiceMicrophoneHost.orientation = .vertical;voiceMicrophoneHost.alignment = .leading
+        mic.addArrangedSubview(voiceMicrophoneHost);addCard(mic,to:stack)
+        voiceMicrophoneHost.widthAnchor.constraint(equalTo:mic.widthAnchor).isActive=true
+        return scrollPage(stack,maximumWidth:760)
+    }
+    private func clearVoiceMicrophoneTest() {
+        guard !voiceTestClosing else { return };voiceTestClosing=true
+        defer { voiceTestClosing=false }
+        voiceMicrophonePanel?.close();voiceMicrophonePanel?.removeFromSuperview()
+        voiceMicrophonePanel=nil;voiceMicrophoneController=nil
+    }
+    private func refreshVoiceTests() {
+        if currentPage == .voice && remoteWorkspaceOpen && !voiceTestClosing {
+            if voiceMicrophoneController !== controller || voiceMicrophonePanel == nil {
+                clearVoiceMicrophoneTest()
+                let panel=VoiceMicrophonePanel(controller:controller)
+                voiceMicrophonePanel=panel;voiceMicrophoneController=controller;voiceMicrophoneHost.addArrangedSubview(panel)
+                panel.widthAnchor.constraint(equalTo:voiceMicrophoneHost.widthAnchor).isActive=true
+            }
+        } else if currentPage != .voice { clearVoiceMicrophoneTest() }
+    }
+    @objc private func editSupportedAppShortcut(_ sender:NSButton) {
+        guard let id=sender.identifier?.rawValue else { return }
+        selectAppProfile(id)
+        guard controller.config.appPluginID == id else { return }
+        editVoiceSettings()
+    }
+    @objc private func editVoiceSettings() {
+        guard controller.appPlugin?.app?.supports(.dictate) == true else { return }
+        clearVoiceMicrophoneTest();loadEditable()
+        let alert=NSAlert();alert.messageText="Dictation shortcut for \(controller.appPlugin?.name ?? "this app")"
+        alert.informativeText="Match the shortcut configured in this app. These settings apply only to this app profile."
+        alert.addButton(withTitle:"Save");alert.addButton(withTitle:"Cancel")
+        let content=vertical(spacing:12)
+        content.addArrangedSubview(shortcut);shortcut.setAccessibilityLabel("Record dictation shortcut")
+        content.addArrangedSubview(label("Click the field and press your shortcut keys. Esc cancels recording.",size:12,color:.rvMuted))
+        content.addArrangedSubview(confirmed);content.addArrangedSubview(toggle)
+        content.frame=NSRect(x:0,y:0,width:460,height:150)
+        shortcut.widthAnchor.constraint(equalToConstant:460).isActive=true;shortcut.heightAnchor.constraint(equalToConstant:36).isActive=true
+        alert.accessoryView=content
+        while alert.runModal() == .alertFirstButtonReturn { if saveVoiceSettings() { break } }
+        loadEditable();refresh()
     }
     private func makeApps()->NSView {
         let stack=vertical(spacing:16)
@@ -498,6 +526,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             let edit=button("Configure →",#selector(configureSupportedApp(_:)))
             edit.identifier=NSUserInterfaceItemIdentifier(plugin.id);edit.setAccessibilityLabel("Configure \(plugin.name)")
             var items:[NSView]=[icon,info,spacer()]
+            if plugin.app?.supports(.dictate) == true {
+                let voice=button("Dictation shortcut…",#selector(editSupportedAppShortcut(_:)))
+                voice.identifier=NSUserInterfaceItemIdentifier(plugin.id);items.append(voice)
+            }
             items.append(edit)
             let panel=card(horizontal(items,spacing:16),padding:18)
             supportedAppList.addArrangedSubview(panel);panel.widthAnchor.constraint(equalTo:supportedAppList.widthAnchor).isActive=true
@@ -641,18 +673,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func showPage(_ page:WorkspacePage) {
         if page.isRemoteScoped && !remoteWorkspaceOpen { showPage(.remotes);return }
         if currentPage == .buttons && page != .buttons { controller.cancelLearning() }
+        if currentPage == .voice && page != .voice { clearVoiceMicrophoneTest() }
         if page == .remotes { remoteWorkspaceOpen=false;rebuildRemoteLibrary() }
         currentPage=page
         pageTitle.stringValue=page == .overview ? (controller.devicePlugin?.name ?? "Remote overview") : page.title
-        pageSubtitle.stringValue=page.isRemoteScoped ? "\(controller.devicePlugin?.name ?? "Remote") · \(page == .buttons || page == .voice ? "App: " + (controller.appPlugin?.name ?? "No specific app") : page.subtitle)" : page.subtitle
+        pageSubtitle.stringValue=page.isRemoteScoped ? "\(controller.devicePlugin?.name ?? "Remote") · \(page == .buttons ? "App: " + (controller.appPlugin?.name ?? "No specific app") : page.subtitle)" : page.subtitle
         for (key,view) in pages { view.isHidden=key != page }
         sidebarNavigation.update(page:page,remoteName:remoteWorkspaceOpen ? controller.devicePlugin?.name ?? "Selected remote":nil)
-        sidebarContext.stringValue=remoteWorkspaceOpen ? "Editing profile: \(controller.appPlugin?.name ?? "No specific app")" : "\(libraryDevices.count) \(libraryDevices.count == 1 ? "remote" : "remotes") · \(libraryConnectedCount) connected"
+        sidebarContext.stringValue=remoteWorkspaceOpen ? (currentPage == .voice ? "Microphone for this remote" : "Editing profile: \(controller.appPlugin?.name ?? "No specific app")") : "\(libraryDevices.count) \(libraryDevices.count == 1 ? "remote" : "remotes") · \(libraryConnectedCount) connected"
         if !sidebarNavigation.hasKeyboardFocus { window?.makeFirstResponder(nil) }
         refresh()
     }
     @objc private func navigateMenu(_ sender:NSMenuItem) { if let page=WorkspacePage.allCases.first(where:{$0.index == sender.tag}) { showPage(page) } }
-    @objc private func toggleVoiceDiagnostics(_ sender:NSButton) { voiceDiagnostics.isHidden.toggle();sender.title=voiceDiagnostics.isHidden ? "Show voice diagnostics":"Hide voice diagnostics" }
     @objc private func openButtons() { showPage(.buttons) }
     @objc private func openVoice() { showPage(.voice) }
     @objc private func openApps() { showPage(.apps) }
@@ -684,7 +716,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func button(_ text:String,_ selector:Selector,primary:Bool=false)->NSButton { let value:NSButton=primary ? PrimaryButton(title:text,target:self,action:selector) : NSButton(title:text,target:self,action:selector);value.bezelStyle = .rounded;value.controlSize = .large;if primary { value.bezelColor = .rvAccent;value.contentTintColor = .white };return value }
     private func pin(_ child:NSView,to parent:NSView,top:CGFloat,left:CGFloat,right:CGFloat) { parent.addSubview(child);child.translatesAutoresizingMaskIntoConstraints=false;NSLayoutConstraint.activate([child.leadingAnchor.constraint(equalTo:parent.leadingAnchor,constant:left),child.trailingAnchor.constraint(equalTo:parent.trailingAnchor,constant:-right),child.topAnchor.constraint(equalTo:parent.topAnchor,constant:top)]) }
     private func card(_ content:NSView,padding:CGFloat)->NSView { let view=WorkspaceSurface(.card);pin(content,to:view,top:padding,left:padding,right:padding);content.bottomAnchor.constraint(equalTo:view.bottomAnchor,constant:-padding).isActive=true;return view }
-    private func loadEditable() { shortcut.stringValue=controller.config.shortcut;confirmed.state=controller.config.shortcutConfirmed ? .on:.off;toggle.state=controller.config.voiceMode == "toggle" ? .on:.off;suppress.state=controller.config.suppressOriginal ? .on:.off }
+    private func loadEditable() { shortcut.setShortcut(controller.config.shortcut);confirmed.state=controller.config.shortcutConfirmed ? .on:.off;toggle.state=controller.config.voiceMode == "toggle" ? .on:.off;suppress.state=controller.config.suppressOriginal ? .on:.off }
     private func refresh() {
         for session in sessions.controllers.values {
             session.setButtonTestMode(ButtonTestState.shouldEnable(
@@ -705,12 +737,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let learning=controller.learningIndex == selectedIndex
         learnButton.title=learning ? "Press remote button…" : binding.usage == nil ? "Link button" : "Relink button"
         learnButton.isEnabled = !learning;cancelButton.isHidden = !learning
-        learningHelp.stringValue=learning ? "Press only \(binding.name) on your physical remote. JustVibe Remote won’t run your saved action while learning." : binding.usage == nil ? "Choose Link physical button, then press this button on your remote." : "This button is linked. Use Relink button only if it stops responding."
+        learningHelp.stringValue=learning ? "Press only \(binding.name) on your physical remote. This link will apply to all apps for this remote." : binding.usage == nil ? "Choose Link physical button, then press this button on your remote. The link is shared across apps; each app keeps its own action." : "Linked for this remote. Relinking updates all its app profiles and keeps their actions separate."
         let dictationShortcut=ShortcutCapture.display(controller.config.shortcut)
         actionPicker.removeAllItems();actionPicker.addItems(withTitles:controller.availableActions.map { $0 == .dictate ? "Dictation · \(dictationShortcut)" : $0.title });actionPicker.selectItem(at:controller.availableActions.firstIndex(of:binding.action) ?? 0)
         actionHelp.stringValue=binding.action == .native ? "Outside test mode, keeps the remote’s normal behavior. Choose an action to personalize it." : binding.usage == nil ? "Action selected. Learn this button to activate the mapping." : binding.action == .backspace ? "Press to delete one character. Hold to keep deleting; release to stop. Keep the text box focused." : "Saved for \(controller.appPlugin?.name ?? "the shared profile"). Other app profiles keep their own actions."
-        microphoneStatus.stringValue=controller.config.microphones[controller.config.devicePluginID].map { "Selected microphone: \($0.name). Choose this input in \(controller.appPlugin?.name ?? "your app") too." } ?? "No microphone selected. Open the microphone test to choose one."
-        dictationStopStatus.stringValue=controller.dictationStopSummary
         voiceSection.isHidden=binding.action != .dictate || controller.appPlugin?.app?.supports(.dictate) != true
         let appName=controller.appPlugin?.name ?? "App"
         let toggleShortcut=controller.appPlugin?.app?.actions["dictate"]?.operation == "toggle-shortcut"
@@ -757,10 +787,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         badge.textColor=controller.connected > 0 ? .systemTeal:.rvMuted
         connectButton.title=controller.running ? "Disconnect" : "Connect remote"
         sidebarNavigation.update(page:currentPage,remoteName:remoteWorkspaceOpen ? controller.devicePlugin?.name ?? "Selected remote":nil)
-        sidebarContext.stringValue=remoteWorkspaceOpen ? "Editing profile: \(controller.appPlugin?.name ?? "No specific app")" : "\(libraryDevices.count) \(libraryDevices.count == 1 ? "remote" : "remotes") · \(libraryConnectedCount) connected"
+        sidebarContext.stringValue=remoteWorkspaceOpen ? (currentPage == .voice ? "Microphone for this remote" : "Editing profile: \(controller.appPlugin?.name ?? "No specific app")") : "\(libraryDevices.count) \(libraryDevices.count == 1 ? "remote" : "remotes") · \(libraryConnectedCount) connected"
         if currentPage.isRemoteScoped {
             pageTitle.stringValue=currentPage == .overview ? (controller.devicePlugin?.name ?? "Remote overview") : currentPage.title
-            pageSubtitle.stringValue="\(controller.devicePlugin?.name ?? "Remote") · \(currentPage == .buttons || currentPage == .voice ? "App: " + (controller.appPlugin?.name ?? "No specific app") : currentPage.subtitle)"
+            pageSubtitle.stringValue="\(controller.devicePlugin?.name ?? "Remote") · \(currentPage == .buttons ? "App: " + (controller.appPlugin?.name ?? "No specific app") : currentPage.subtitle)"
         }
         rebuildRemoteLibrary()
         remoteArtworkPreview.reference=controller.artwork.image;remoteArtworkPreview.remoteLayout=controller.devicePlugin?.device?.layout
@@ -771,14 +801,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         overviewConnection.stringValue=controller.running && controller.connected > 0 ? "Connected · \(controller.devicePlugin?.name ?? "remote")" : "Not connected · choose a device and connect"
         overviewApp.stringValue=noSpecificApp ? (controller.config.followActiveApp ? "Automatic app controls · editing shared fallback":"Shared controls only") : "Editing \(controller.appPlugin?.name ?? "no app") · \(controller.config.followActiveApp ? "Follows the active app":"Uses selected profile")"
         overviewVoice.stringValue=controller.appPlugin?.app?.supports(.dictate) == true ? (controller.config.dictationTested ? "Setup test confirmed · review microphone and shortcut":"Setup needs a microphone, shortcut, and test") : noSpecificApp && controller.config.followActiveApp ? "Uses each active app’s saved dictation shortcut":"The selected app plugin does not provide dictation"
-        let supportsVoice=controller.appPlugin?.app?.supports(.dictate) == true
         let toggledShortcut=controller.appPlugin?.app?.actions["dictate"]?.operation == "toggle-shortcut"
         confirmed.title=toggledShortcut ? "Matches my app’s start/stop dictation shortcut":"Matches my app’s hold-to-dictate shortcut"
-        voiceOnlyControls.forEach { $0.isEnabled=supportsVoice }
         rebuildPluginList()
         rebuildSupportedApps()
         populatePlugins()
-        voiceSupport.stringValue=controller.appPlugin?.app?.supports(.dictate) == true ? "Voice settings for \(controller.appPlugin?.name ?? "your app")." + (toggledShortcut ? " The shortcut is tapped once to start and again to stop.":"") : "The selected app plugin does not support dictation. Choose another app in this remote’s Apps page."
+        refreshVoiceTests()
+        status.isHidden=currentPage == .voice
         let connected=controller.running && controller.connected>0
         let permissions=RemoteInput.allowed && TargetOutput.allowed
         let ready=controller.config.remoteSetupCompleted && connected && permissions
@@ -831,9 +860,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc private func changeRouting() { var config=controller.config; config.followActiveApp=followApp.state == .on; do { try controller.update(config) } catch { show(error); refresh() } }
     @objc private func changeAction() { guard actionPicker.indexOfSelectedItem >= 0 else { return };var config=controller.config;config.bindings[selectedIndex].action=controller.availableActions[actionPicker.indexOfSelectedItem];do { try controller.update(config) } catch { show(error) } }
     @objc private func saveVoice() { _ = saveVoiceSettings() }
-    private func saveVoiceSettings() -> Bool { var config=controller.config;config.shortcut=shortcut.stringValue;config.shortcutConfirmed=confirmed.state == .on;config.voiceMode=toggle.state == .on ? "toggle":"hold";do { try controller.update(config); return true } catch { show(error);return false } }
+    private func saveVoiceSettings() -> Bool { var config=controller.config;config.shortcut=shortcut.shortcutValue ?? "";config.shortcutConfirmed=confirmed.state == .on;config.voiceMode=toggle.state == .on ? "toggle":"hold";do { try controller.update(config); return true } catch { show(error);return false } }
     @objc private func stopVoice() { sessions.stopVoices() }
-    @objc private func testVoice() { if controller.voiceActive { controller.stopVoice();return };if !controller.running { controller.testVoice();return };if saveVoiceSettings() { controller.testVoice() } }
     private func populatePlugins() {
         var choices=[AppIconChoice(id:Configuration.noSpecificAppID,name:"No specific app",image:NSImage(systemSymbolName:"square.dashed",accessibilityDescription:nil))]
         for plugin in sessions.catalog.apps.sorted(by: { $0.name.localizedStandardCompare($1.name) == .orderedAscending }) {
@@ -844,7 +872,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         appIconSelector.update(choices:choices,selection:controller.config.appPluginID)
     }
     private var voiceDraftChanged: Bool {
-        shortcut.stringValue != controller.config.shortcut || (confirmed.state == .on) != controller.config.shortcutConfirmed || (toggle.state == .on) != (controller.config.voiceMode == "toggle")
+        (shortcut.shortcutValue ?? "") != controller.config.shortcut || (confirmed.state == .on) != controller.config.shortcutConfirmed || (toggle.state == .on) != (controller.config.voiceMode == "toggle")
     }
     private func selectAppProfile(_ appID:String) {
         guard appID != controller.config.appPluginID,confirmVoiceDraft() else { populatePlugins();return }
@@ -863,7 +891,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         default: return false
         }
     }
-    func windowShouldClose(_ sender:NSWindow) -> Bool { confirmVoiceDraft() }
+    func windowShouldClose(_ sender:NSWindow) -> Bool { guard confirmVoiceDraft() else { return false };clearVoiceMicrophoneTest();return true }
     @objc private func addApplication() {
         let panel=NSOpenPanel();panel.allowedContentTypes=[.application];panel.allowsMultipleSelection=false
         panel.canChooseDirectories=false;panel.treatsFilePackagesAsDirectories=false
@@ -925,7 +953,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     func windowDidMiniaturize(_ notification:Notification) { refreshInputFocus() }
     func windowDidDeminiaturize(_ notification:Notification) { refreshInputFocus() }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender:NSApplication)->Bool { true }
-    func applicationShouldTerminate(_ sender:NSApplication)->NSApplication.TerminateReply { guard controller != nil else { return .terminateNow };guard confirmVoiceDraft() else { return .terminateCancel };do { try sessions.shutdown();return .terminateNow } catch { show(error);return .terminateCancel } }
+    func applicationShouldTerminate(_ sender:NSApplication)->NSApplication.TerminateReply { guard controller != nil else { return .terminateNow };guard confirmVoiceDraft() else { return .terminateCancel };clearVoiceMicrophoneTest();do { try sessions.shutdown();return .terminateNow } catch { show(error);return .terminateCancel } }
 }
 extension NSBox { static func separator()->NSBox { let value=NSBox();value.boxType = .separator;return value } }
 let application=NSApplication.shared

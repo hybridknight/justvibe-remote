@@ -32,6 +32,6 @@ Deliver the folder, ID/version, validation result, tested/unverified behavior, a
 A supplied remote image belongs to the separate device plugin's layout. Do not add device geometry or guessed HID usages to an app plugin. App identities and shortcuts still need their own evidence; keep this app manifest at schema/API `1/1`.
 
 
-## Bundled Cursor scope and API 3
+## Bundled Cursor scope and Control+M taps
 
-The user explicitly requested bundled Cursor support. This package is host-maintained bundled-plugin work. It uses macOS-only schema/API 3/3 with toggle-shortcut dictation, as documented in the host docs/PLUGINS.md; this supersedes the starter's API 1 held-only restrictions. Keep the reference schema snapshot unchanged. Control+M and press-to-start / press-to-stop behavior were supplied and confirmed by the user. Preserve org.justviberemote.app.cursor as the bundled ID. Do not claim Windows or live app verification.
+This package is host-maintained bundled-plugin work. Preserve org.justviberemote.app.cursor and the reference schema snapshot. Keep macOS-only schema/API 3/3 and toggle-shortcut dictation. The user explicitly requires Control+M taps to start and stop dictation, not a chord held for the recording. This requirement supersedes the earlier Hold to Talk interpretation. Do not change Cursor’s keybindings or add an external dictation tool. Different Cursor windows or versions may have different shortcut behavior; do not promote a source-code default into a claim about the user’s active configuration. Do not claim Windows or unperformed live verification.

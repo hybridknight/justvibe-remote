@@ -112,25 +112,51 @@ struct MacShortcut {
         return MacShortcut(key: code, flags: flags)
     }
 }
+/// Retain the process instance, including when Launch Services has no launch
+/// date (as can happen for Cursor). The retained instance's termination state
+/// prevents cleanup from being redirected to a later process reusing its PID.
+protocol ToggleShortcutApplication:AnyObject {
+    var processIdentifier:pid_t { get }
+    var isTerminated:Bool { get }
+    var bundleIdentifier:String? { get }
+    var launchDate:Date? { get }
+}
+extension NSRunningApplication:ToggleShortcutApplication {}
+struct ToggleShortcutTarget {
+    private let application:any ToggleShortcutApplication
+    init?(_ application:any ToggleShortcutApplication,foregroundPID:pid_t?) {
+        guard !application.isTerminated,application.processIdentifier == foregroundPID else { return nil }
+        self.application=application
+    }
+    func liveApplication(resolve:(pid_t)->(any ToggleShortcutApplication)? = { NSRunningApplication(processIdentifier:$0) }) -> (any ToggleShortcutApplication)? {
+        guard !application.isTerminated,
+              let current=resolve(application.processIdentifier),
+              !current.isTerminated,current.bundleIdentifier == application.bundleIdentifier,
+              current.launchDate == application.launchDate else { return nil }
+        return current
+    }
+}
 final class TargetOutput {
     var plugin: AppPlugin?
     private var heldShortcut: MacShortcut?
     private var toggleLease=ToggleShortcutLease()
     private var toggleShortcut:MacShortcut?
-    private var toggleTarget:(pid:pid_t,launch:Date,bundle:String?)?
+    private var toggleTarget:ToggleShortcutTarget?
     var hasVoiceOutput:Bool { heldShortcut != nil || toggleLease.active }
     func beginDictation(_ config:Configuration,operation:String) throws {
         guard operation == "toggle-shortcut" else { try hold(config.shortcut);return }
         guard !hasVoiceOutput else { return }
-        guard let app=target(config),isTargetFrontmost(config),let launch=app.launchDate else {
+        guard let app=target(config),
+              let target=ToggleShortcutTarget(app,foregroundPID:NSWorkspace.shared.frontmostApplication?.processIdentifier) else {
             throw JustVibeRemoteError.message("Bring the selected app to the front before starting dictation.")
         }
         let shortcut=try MacShortcut.parse(config.shortcut)
-        toggleTarget=(app.processIdentifier,launch,app.bundleIdentifier);toggleShortcut=shortcut
+        toggleTarget=target;toggleShortcut=shortcut
         var lease=toggleLease
         defer { toggleLease=lease }
+        let destination=Self.toggleEventPID(target:app.processIdentifier,foreground:NSWorkspace.shared.frontmostApplication?.processIdentifier)
         do {
-            try lease.start(down:{try self.post(shortcut.key,flags:shortcut.flags,down:true,pid:app.processIdentifier)},up:{try self.post(shortcut.key,flags:[],down:false,pid:app.processIdentifier)})
+            try lease.start(down:{try self.post(shortcut.key,flags:shortcut.flags,down:true,pid:destination)},up:{try self.post(shortcut.key,flags:[],down:false,pid:destination)})
         } catch {
             if !lease.active { toggleTarget=nil;toggleShortcut=nil }
             throw error
@@ -138,13 +164,21 @@ final class TargetOutput {
     }
     private func releaseToggle() throws {
         guard let target=toggleTarget,let shortcut=toggleShortcut else { return }
-        guard let app=NSRunningApplication(processIdentifier:target.pid),!app.isTerminated,app.launchDate == target.launch,app.bundleIdentifier == target.bundle else {
+        guard let app=target.liveApplication() else {
             toggleLease=ToggleShortcutLease();toggleTarget=nil;toggleShortcut=nil;return
         }
         var lease=toggleLease
         defer { toggleLease=lease }
-        try lease.stop(down:{try self.post(shortcut.key,flags:shortcut.flags,down:true,pid:target.pid)},up:{try self.post(shortcut.key,flags:[],down:false,pid:target.pid)})
+        let destination=Self.toggleEventPID(target:app.processIdentifier,foreground:NSWorkspace.shared.frontmostApplication?.processIdentifier)
+        try lease.stop(down:{try self.post(shortcut.key,flags:shortcut.flags,down:true,pid:destination)},up:{try self.post(shortcut.key,flags:[],down:false,pid:destination)})
         toggleTarget=nil;toggleShortcut=nil
+    }
+    /// Foreground shortcuts use the normal keyboard event path, as held
+    /// dictation already does. After focus loss, cleanup must stay addressed to
+    /// the original process instead of toggling voice in the newly focused app.
+    /// Resolve once per tap so key-down and key-up use the same destination.
+    static func toggleEventPID(target:pid_t,foreground:pid_t?) -> pid_t? {
+        foreground == target ? nil : target
     }
     static var allowed: Bool { AXIsProcessTrusted() }
     static func requestPermission() {

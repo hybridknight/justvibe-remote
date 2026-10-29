@@ -2,7 +2,7 @@
   "schemaVersion": 3,
   "apiVersion": 3,
   "id": "org.justviberemote.app.cursor",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "name": "Cursor",
   "author": "JustVibeRemote",
   "kind": "app",

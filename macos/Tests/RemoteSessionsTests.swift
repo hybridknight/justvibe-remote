@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 import CoreGraphics
 import ImageIO
 import UniformTypeIdentifiers
@@ -51,6 +52,12 @@ import UniformTypeIdentifiers
         check(second.config.bindings[0].action != .escape,"saving one controller leaves the other untouched")
         var other=second.config;other.bindings[0].action = .native;other.voiceMode="hold";try second.update(other)
         check(first.config.bindings[0].action == .escape && first.config.voiceMode != "hold","second receiver changes cannot alter the first receiver")
+        let beforeVoiceTest=try Data(contentsOf:first.store.url)
+        let voiceTestPanel=VoiceMicrophonePanel(controller:first)
+        check(!first.microphoneTesting && !first.running && !first.voiceActive,"displaying the microphone test page never starts audio, dictation or a receiver")
+        check(try Data(contentsOf:first.store.url) == beforeVoiceTest,"displaying the microphone test page does not save or change the selected input")
+        voiceTestPanel.close();voiceTestPanel.close()
+        check(!first.microphoneTesting && !first.voiceActive,"leaving the microphone test page is safe and idempotent")
         check(first.claimVoice?() == true,"first remote can own the shared voice channel")
         check(second.claimVoice?() == false,"second remote cannot overlap a held voice shortcut")
         let checkpoint=RemoteSetupCheckpoint(stage:.button,wantsVoice:false,controlID:"ok")
@@ -170,6 +177,25 @@ import UniformTypeIdentifiers
         }
         check(SingleInstanceLock.isReadOnly(["JustVibe Remote","--render-add-remote-preview","/tmp/preview.png"]),"new remote flow preview never activates hardware sessions")
         let recorded=ShortcutCapture.encode(keyCode:2,modifiers:[.control,.shift])
+        check(ShortcutCapture.encode(keyCode:46,modifiers:[.control]) == "CTRL+M","Control+M is captured as the current dictation shortcut")
+        let setupRecorder=ShortcutRecorder(frame:.zero)
+        var recorderChanges=0;setupRecorder.changed={ recorderChanges+=1 }
+        setupRecorder.setShortcut("CTRL+M")
+        check(setupRecorder.shortcutValue == "CTRL+M" && recorderChanges == 0,"prefilling setup keeps the suggested chord without claiming a user key press")
+        _=setupRecorder.becomeFirstResponder()
+        let chord=NSEvent.keyEvent(with:.keyDown,location:.zero,modifierFlags:[.control,.shift],timestamp:0,windowNumber:0,context:nil,characters:"d",charactersIgnoringModifiers:"d",isARepeat:false,keyCode:2)!
+        setupRecorder.keyDown(with:chord)
+        check(setupRecorder.shortcutValue == "CTRL+SHIFT+D" && recorderChanges == 1,"a keyboard chord replaces the prefilled shortcut and updates setup")
+        _=setupRecorder.becomeFirstResponder()
+        let cancel=NSEvent.keyEvent(with:.keyDown,location:.zero,modifierFlags:[],timestamp:0,windowNumber:0,context:nil,characters:"\u{1b}",charactersIgnoringModifiers:"\u{1b}",isARepeat:false,keyCode:53)!
+        setupRecorder.keyDown(with:cancel)
+        check(setupRecorder.shortcutValue == "CTRL+SHIFT+D" && recorderChanges == 1,"Escape cancels shortcut capture without replacing saved keys")
+        _=setupRecorder.resignFirstResponder()
+        _=setupRecorder.becomeFirstResponder()
+        let controlM=NSEvent.keyEvent(with:.keyDown,location:.zero,modifierFlags:[.control],timestamp:0,windowNumber:0,context:nil,characters:"m",charactersIgnoringModifiers:"m",isARepeat:false,keyCode:46)!
+        setupRecorder.keyDown(with:controlM)
+        check(setupRecorder.shortcutValue == "CTRL+M" && recorderChanges == 2,"pressing Control and M together records the chord without typing its name")
+        _=setupRecorder.resignFirstResponder()
         check(recorded == "CTRL+SHIFT+D","shortcut recorder encodes a physical modifier chord")
         check(ShortcutCapture.encode(keyCode:2,modifiers:[.command]) == "CMD+D","command chords are recorded without typing command names")
         check(ShortcutCapture.encode(keyCode:49,modifiers:[.option]) == "OPTION+SPACE","space shortcuts use supported output tokens")

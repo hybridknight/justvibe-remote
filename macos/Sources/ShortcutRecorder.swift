@@ -40,6 +40,12 @@ final class ShortcutRecorder:NSControl {
     }
     required init?(coder:NSCoder) { fatalError("init(coder:) is not used") }
     deinit { if let monitor { NSEvent.removeMonitor(monitor) } }
+    /// Load a saved or suggested chord without treating it as a new key press.
+    func setShortcut(_ value:String?) {
+        recording=false;message="";stopListening()
+        shortcutValue=value.flatMap { $0.isEmpty ? nil:$0 }
+        updateAccessibility();needsDisplay=true
+    }
     @objc func optionChanged(_ sender:Any?) { changed?() }
     private func listenWhileFocused() {
         guard monitor == nil else { return }
@@ -110,6 +116,14 @@ final class ShortcutRecorder:NSControl {
         let attributes:[NSAttributedString.Key:Any]=[.font:NSFont.systemFont(ofSize:13,weight:shortcutValue != nil && !recording ? .semibold:.regular),.foregroundColor:recording ? NSColor.rvAccent:NSColor.labelColor]
         let text=title as NSString
         text.draw(at:NSPoint(x:12,y:bounds.midY-text.size(withAttributes:attributes).height/2),withAttributes:attributes)
+        if shortcutValue != nil && !recording && message.isEmpty {
+            let hint="Click to record" as NSString
+            let style:[NSAttributedString.Key:Any]=[.font:NSFont.systemFont(ofSize:11),.foregroundColor:NSColor.secondaryLabelColor]
+            let size=hint.size(withAttributes:style)
+            if text.size(withAttributes:attributes).width+size.width+40<bounds.width {
+                hint.draw(at:NSPoint(x:bounds.maxX-size.width-12,y:bounds.midY-size.height/2),withAttributes:style)
+            }
+        }
     }
     override func drawFocusRingMask() { NSBezierPath(roundedRect:bounds,xRadius:7,yRadius:7).fill() }
     override var focusRingMaskBounds:NSRect { bounds }
