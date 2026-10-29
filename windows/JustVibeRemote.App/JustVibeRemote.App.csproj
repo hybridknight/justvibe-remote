@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType><TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms><EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable>
+    <Version>0.6.0</Version><AssemblyName>JustVibeRemote</AssemblyName><ApplicationManifest>app.manifest</ApplicationManifest>
+    <AssemblyTitle>JustVibe Remote</AssemblyTitle>
+    <Product>JustVibe Remote</Product>
+    <ApplicationIcon>../../assets/branding/JustVibeRemote.ico</ApplicationIcon>
+  </PropertyGroup>
+  <ItemGroup><ProjectReference Include="../JustVibeRemote.Core/JustVibeRemote.Core.csproj" /></ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="../../assets/branding/JustVibeRemote.png" LogicalName="JustVibeRemote.Branding.png" />
+    <EmbeddedResource Include="../../assets/branding/JustVibeRemote.ico" LogicalName="JustVibeRemote.Branding.ico" />
+  </ItemGroup>
+  <ItemGroup><Content Include="../../plugins/bundled/**/plugin.json" Link="plugins/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" /></ItemGroup>
+</Project>

@@ -1,0 +1,285 @@
+{
+  "schemaVersion": 2,
+  "apiVersion": 2,
+  "id": "org.justviberemote.device.xingwei-usb",
+  "version": "1.1.0",
+  "name": "XING WEI 2.4G USB",
+  "author": "JustVibeRemote",
+  "kind": "device",
+  "platforms": [
+    "macos",
+    "windows"
+  ],
+  "capabilities": [
+    "hid.standard",
+    "audio.native-input"
+  ],
+  "device": {
+    "adapter": "hid.standard",
+    "profile": {
+      "schemaVersion": 1,
+      "id": "xingwei-1915-1025",
+      "name": "XING WEI 2.4G USB",
+      "vendorId": 6421,
+      "productId": 4133,
+      "audio": "native-usb-microphone",
+      "consumerReportId": 2,
+      "consumerReportLength": 3,
+      "consumerUsageOffset": 1
+    },
+    "layout": {
+      "version": 1,
+      "width": 240,
+      "height": 800,
+      "bodyStyle": "silver",
+      "description": "Front layout traced from the supplied packaging photo. This is a visual reference; button signals and microphone behavior still need live verification.",
+      "dpad": {
+        "x": 120,
+        "y": 187,
+        "radius": 84
+      },
+      "buttons": [
+        {
+          "id": "microphone",
+          "label": "Microphone",
+          "icon": "microphone",
+          "shape": "circle",
+          "bounds": {
+            "x": 94,
+            "y": 310,
+            "width": 52,
+            "height": 52
+          },
+          "defaultAction": "dictate"
+        },
+        {
+          "id": "power",
+          "label": "Power",
+          "icon": "power",
+          "shape": "circle",
+          "bounds": {
+            "x": 31,
+            "y": 45,
+            "width": 50,
+            "height": 50
+          },
+          "defaultAction": "native"
+        },
+        {
+          "id": "top-right",
+          "label": "Top-right button",
+          "icon": "mode",
+          "shape": "circle",
+          "bounds": {
+            "x": 159,
+            "y": 45,
+            "width": 50,
+            "height": 50
+          },
+          "defaultAction": "native",
+          "hint": "The symbol is unclear in the reference photo. Learn this button to identify its signal."
+        },
+        {
+          "id": "up",
+          "label": "Up",
+          "icon": "up",
+          "shape": "segment",
+          "bounds": {
+            "x": 90,
+            "y": 109,
+            "width": 60,
+            "height": 36
+          },
+          "defaultAction": "native"
+        },
+        {
+          "id": "left",
+          "label": "Left",
+          "icon": "left",
+          "shape": "segment",
+          "bounds": {
+            "x": 36,
+            "y": 158,
+            "width": 38,
+            "height": 58
+          },
+          "defaultAction": "native"
+        },
+        {
+          "id": "ok",
+          "label": "OK",
+          "icon": "ok",
+          "shape": "circle",
+          "bounds": {
+            "x": 80,
+            "y": 147,
+            "width": 80,
+            "height": 80
+          },
+          "defaultAction": "native"
+        },
+        {
+          "id": "right",
+          "label": "Right",
+          "icon": "right",
+          "shape": "segment",
+          "bounds": {
+            "x": 166,
+            "y": 158,
+            "width": 38,
+            "height": 58
+          },
+          "defaultAction": "native"
+        },
+        {
+          "id": "down",
+          "label": "Down",
+          "icon": "down",
+          "shape": "segment",
+          "bounds": {
+            "x": 90,
+            "y": 230,
+            "width": 60,
+            "height": 36
+          },
+          "defaultAction": "native"
+        },
+        {
+          "id": "back",
+          "label": "Home / Back",
+          "icon": "home-back",
+          "shape": "circle",
+          "bounds": {
+            "x": 31,
+            "y": 274,
+            "width": 50,
+            "height": 50
+          },
+          "defaultAction": "native",
+          "hint": "The reference shows a combined Home/Back symbol. Its signal and any alternate press behavior must be learned, not assumed."
+        },
+        {
+          "id": "menu",
+          "label": "Menu",
+          "icon": "menu",
+          "shape": "circle",
+          "bounds": {
+            "x": 159,
+            "y": 274,
+            "width": 50,
+            "height": 50
+          },
+          "defaultAction": "native"
+        },
+        {
+          "id": "volume-up",
+          "label": "Volume up",
+          "icon": "volume-up",
+          "shape": "rounded",
+          "bounds": {
+            "x": 31,
+            "y": 357,
+            "width": 50,
+            "height": 30
+          },
+          "defaultAction": "native"
+        },
+        {
+          "id": "volume-down",
+          "label": "Volume down",
+          "icon": "volume-down",
+          "shape": "rounded",
+          "bounds": {
+            "x": 31,
+            "y": 388,
+            "width": 50,
+            "height": 30
+          },
+          "defaultAction": "native"
+        },
+        {
+          "id": "page-up",
+          "label": "Page up",
+          "icon": "page-up",
+          "shape": "rounded",
+          "bounds": {
+            "x": 159,
+            "y": 357,
+            "width": 50,
+            "height": 30
+          },
+          "defaultAction": "native"
+        },
+        {
+          "id": "page-down",
+          "label": "Page down",
+          "icon": "page-down",
+          "shape": "rounded",
+          "bounds": {
+            "x": 159,
+            "y": 388,
+            "width": 50,
+            "height": 30
+          },
+          "defaultAction": "native"
+        },
+        {
+          "id": "youtube",
+          "label": "YouTube",
+          "icon": "label",
+          "shape": "pill",
+          "bounds": {
+            "x": 32,
+            "y": 437,
+            "width": 82,
+            "height": 36
+          },
+          "defaultAction": "native",
+          "text": "YouTube"
+        },
+        {
+          "id": "netflix",
+          "label": "Netflix",
+          "icon": "label",
+          "shape": "pill",
+          "bounds": {
+            "x": 126,
+            "y": 437,
+            "width": 82,
+            "height": 36
+          },
+          "defaultAction": "native",
+          "text": "NETFLIX"
+        },
+        {
+          "id": "google-play",
+          "label": "Google Play",
+          "icon": "label",
+          "shape": "pill",
+          "bounds": {
+            "x": 32,
+            "y": 489,
+            "width": 82,
+            "height": 36
+          },
+          "defaultAction": "native",
+          "text": "Play"
+        },
+        {
+          "id": "apps",
+          "label": "Apps",
+          "icon": "apps",
+          "shape": "pill",
+          "bounds": {
+            "x": 126,
+            "y": 489,
+            "width": 82,
+            "height": 36
+          },
+          "defaultAction": "native",
+          "text": "Apps"
+        }
+      ]
+    }
+  }
+}

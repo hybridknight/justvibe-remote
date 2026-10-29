@@ -1,0 +1,625 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "enum": [
+        1,
+        2
+      ]
+    },
+    "apiVersion": {
+      "enum": [
+        1,
+        2
+      ]
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)+$",
+      "maxLength": 150
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?$",
+      "maxLength": 64
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100
+    },
+    "author": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 150
+    },
+    "kind": {
+      "enum": [
+        "device",
+        "app"
+      ]
+    },
+    "platforms": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "macos",
+          "windows"
+        ]
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "capabilities": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "hid.standard",
+          "audio.native-input",
+          "target.focus",
+          "input.shortcuts"
+        ]
+      },
+      "uniqueItems": true
+    },
+    "device": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "adapter": {
+          "const": "hid.standard"
+        },
+        "profile": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "vendorId": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            },
+            "productId": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            },
+            "audio": {
+              "enum": [
+                "native-usb-microphone",
+                "none"
+              ]
+            },
+            "consumerReportId": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 255
+            },
+            "consumerReportLength": {
+              "type": "integer",
+              "minimum": 3,
+              "maximum": 64
+            },
+            "consumerUsageOffset": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 62
+            }
+          },
+          "required": [
+            "schemaVersion",
+            "id",
+            "name",
+            "vendorId",
+            "productId",
+            "audio",
+            "consumerReportId",
+            "consumerReportLength",
+            "consumerUsageOffset"
+          ]
+        },
+        "layout": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "version": {
+              "const": 1
+            },
+            "width": {
+              "type": "number",
+              "minimum": 100,
+              "maximum": 2000
+            },
+            "height": {
+              "type": "number",
+              "minimum": 100,
+              "maximum": 2000
+            },
+            "bodyStyle": {
+              "enum": [
+                "silver",
+                "dark"
+              ]
+            },
+            "description": {
+              "type": "string",
+              "maxLength": 400
+            },
+            "dpad": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "x": {
+                  "type": "number"
+                },
+                "y": {
+                  "type": "number"
+                },
+                "radius": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                }
+              },
+              "required": [
+                "x",
+                "y",
+                "radius"
+              ]
+            },
+            "buttons": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 48,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9._-]{0,47}$"
+                  },
+                  "label": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 60
+                  },
+                  "icon": {
+                    "enum": [
+                      "power",
+                      "mode",
+                      "microphone",
+                      "up",
+                      "down",
+                      "left",
+                      "right",
+                      "ok",
+                      "home-back",
+                      "home",
+                      "back",
+                      "menu",
+                      "volume-up",
+                      "volume-down",
+                      "page-up",
+                      "page-down",
+                      "apps",
+                      "label"
+                    ]
+                  },
+                  "shape": {
+                    "enum": [
+                      "circle",
+                      "pill",
+                      "rounded",
+                      "segment"
+                    ]
+                  },
+                  "bounds": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "x": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 2000
+                      },
+                      "y": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 2000
+                      },
+                      "width": {
+                        "type": "number",
+                        "minimum": 16,
+                        "maximum": 2000
+                      },
+                      "height": {
+                        "type": "number",
+                        "minimum": 16,
+                        "maximum": 2000
+                      }
+                    },
+                    "required": [
+                      "x",
+                      "y",
+                      "width",
+                      "height"
+                    ]
+                  },
+                  "text": {
+                    "type": "string",
+                    "maxLength": 20
+                  },
+                  "hint": {
+                    "type": "string",
+                    "maxLength": 300
+                  },
+                  "usage": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "page": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 65535
+                      },
+                      "code": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 65535
+                      }
+                    },
+                    "required": [
+                      "page",
+                      "code"
+                    ]
+                  },
+                  "defaultAction": {
+                    "enum": [
+                      "native",
+                      "dictate",
+                      "focus",
+                      "send",
+                      "backspace",
+                      "escape"
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "label",
+                  "icon",
+                  "shape",
+                  "bounds"
+                ]
+              }
+            }
+          },
+          "required": [
+            "version",
+            "width",
+            "height",
+            "bodyStyle",
+            "buttons"
+          ]
+        }
+      },
+      "required": [
+        "adapter",
+        "profile"
+      ]
+    },
+    "app": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "adapter": {
+          "const": "shortcuts"
+        },
+        "targets": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "macos": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "bundleIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 150
+                  }
+                },
+                "names": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 150
+                  }
+                }
+              },
+              "required": [
+                "bundleIds",
+                "names"
+              ]
+            },
+            "windows": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "bundleIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 150
+                  }
+                },
+                "names": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 150
+                  }
+                }
+              },
+              "required": [
+                "bundleIds",
+                "names"
+              ]
+            }
+          },
+          "required": []
+        },
+        "actions": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "focus": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "operation": {
+                  "const": "focus"
+                }
+              },
+              "required": [
+                "operation"
+              ]
+            },
+            "dictate": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "operation": {
+                  "const": "hold-shortcut"
+                },
+                "shortcuts": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "macos": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 100
+                    },
+                    "windows": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 100
+                    }
+                  },
+                  "required": []
+                }
+              },
+              "required": [
+                "operation",
+                "shortcuts"
+              ]
+            },
+            "send": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "operation": {
+                  "const": "tap-shortcut"
+                },
+                "shortcuts": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "macos": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 100
+                    },
+                    "windows": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 100
+                    }
+                  },
+                  "required": []
+                }
+              },
+              "required": [
+                "operation",
+                "shortcuts"
+              ]
+            },
+            "backspace": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "operation": {
+                  "const": "tap-shortcut"
+                },
+                "shortcuts": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "macos": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 100
+                    },
+                    "windows": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 100
+                    }
+                  },
+                  "required": []
+                }
+              },
+              "required": [
+                "operation",
+                "shortcuts"
+              ]
+            },
+            "escape": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "operation": {
+                  "const": "tap-shortcut"
+                },
+                "shortcuts": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "macos": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 100
+                    },
+                    "windows": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 100
+                    }
+                  },
+                  "required": []
+                }
+              },
+              "required": [
+                "operation",
+                "shortcuts"
+              ]
+            }
+          },
+          "required": [
+            "focus"
+          ]
+        }
+      },
+      "required": [
+        "adapter",
+        "targets",
+        "actions"
+      ]
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "apiVersion",
+    "id",
+    "version",
+    "name",
+    "author",
+    "kind",
+    "platforms",
+    "capabilities"
+  ],
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "JustVibeRemote plugin manifest \u2014 APIs 1 and 2",
+  "description": "Run PluginTool validate for semantic checks such as report offsets, shortcut grammar, capability sets and target coverage.",
+  "oneOf": [
+    {
+      "properties": {
+        "kind": {
+          "const": "device"
+        }
+      },
+      "required": [
+        "device"
+      ],
+      "not": {
+        "required": [
+          "app"
+        ]
+      }
+    },
+    {
+      "properties": {
+        "kind": {
+          "const": "app"
+        }
+      },
+      "required": [
+        "app"
+      ],
+      "not": {
+        "required": [
+          "device"
+        ]
+      }
+    }
+  ],
+  "allOf": [
+    {
+      "oneOf": [
+        {
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "apiVersion": {
+              "const": 1
+            },
+            "device": {
+              "not": {
+                "required": [
+                  "layout"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "properties": {
+            "schemaVersion": {
+              "const": 2
+            },
+            "apiVersion": {
+              "const": 2
+            },
+            "kind": {
+              "const": "device"
+            },
+            "device": {
+              "required": [
+                "layout"
+              ]
+            }
+          },
+          "required": [
+            "device"
+          ]
+        }
+      ]
+    }
+  ]
+}

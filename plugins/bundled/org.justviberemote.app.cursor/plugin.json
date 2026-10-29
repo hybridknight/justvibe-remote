@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 3,
+  "apiVersion": 3,
+  "id": "org.justviberemote.app.cursor",
+  "version": "1.0.0",
+  "name": "Cursor",
+  "author": "JustVibeRemote",
+  "kind": "app",
+  "platforms": [
+    "macos"
+  ],
+  "capabilities": [
+    "target.focus",
+    "input.shortcuts"
+  ],
+  "app": {
+    "adapter": "shortcuts",
+    "targets": {
+      "macos": {
+        "bundleIds": [
+          "com.todesktop.230313mzl4w4u92"
+        ],
+        "names": [
+          "Cursor"
+        ]
+      }
+    },
+    "actions": {
+      "focus": {
+        "operation": "focus"
+      },
+      "dictate": {
+        "operation": "toggle-shortcut",
+        "shortcuts": {
+          "macos": "CTRL+M"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>CFBundleName</key><string>JustVibe Remote</string>
+<key>CFBundleDisplayName</key><string>JustVibe Remote</string>
+<key>CFBundleIdentifier</key><string>app.justviberemote.desktop</string>
+<key>CFBundleExecutable</key><string>JustVibeRemote</string>
+<key>CFBundlePackageType</key><string>APPL</string>
+<key>CFBundleIconFile</key><string>JustVibeRemote.icns</string>
+<key>CFBundleShortVersionString</key><string>0.9.4</string>
+<key>CFBundleVersion</key><string>16</string>
+<key>LSMinimumSystemVersion</key><string>13.0</string>
+<key>NSHighResolutionCapable</key><true/>
+<key>NSMicrophoneUsageDescription</key><string>Test the microphone you select with a short local preview. Audio is never uploaded by JustVibe Remote.</string>
+<key>NSInputMonitoringUsageDescription</key><string>Read button presses from your selected remote receiver.</string>
+</dict></plist>

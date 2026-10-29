@@ -1,0 +1,117 @@
+{
+  "schemaVersion": 2,
+  "apiVersion": 2,
+  "id": "com.example.justviberemote.remote",
+  "version": "1.0.0",
+  "name": "Example USB remote",
+  "author": "Your name",
+  "kind": "device",
+  "platforms": [
+    "macos",
+    "windows"
+  ],
+  "capabilities": [
+    "hid.standard"
+  ],
+  "device": {
+    "adapter": "hid.standard",
+    "profile": {
+      "schemaVersion": 1,
+      "id": "example-remote",
+      "name": "Example USB remote",
+      "vendorId": 4660,
+      "productId": 22136,
+      "audio": "none",
+      "consumerReportId": 2,
+      "consumerReportLength": 3,
+      "consumerUsageOffset": 1
+    },
+    "layout": {
+      "version": 1,
+      "width": 240,
+      "height": 640,
+      "bodyStyle": "dark",
+      "description": "Generic placeholder. Replace geometry with a layout traced from the actual remote image.",
+      "buttons": [
+        {
+          "id": "microphone",
+          "label": "Microphone",
+          "icon": "microphone",
+          "shape": "circle",
+          "bounds": {
+            "x": 30,
+            "y": 80,
+            "width": 70,
+            "height": 70
+          },
+          "defaultAction": "dictate"
+        },
+        {
+          "id": "power",
+          "label": "Power",
+          "icon": "power",
+          "shape": "circle",
+          "bounds": {
+            "x": 140,
+            "y": 80,
+            "width": 70,
+            "height": 70
+          },
+          "defaultAction": "native"
+        },
+        {
+          "id": "ok",
+          "label": "OK",
+          "icon": "ok",
+          "shape": "circle",
+          "bounds": {
+            "x": 30,
+            "y": 175,
+            "width": 70,
+            "height": 70
+          },
+          "defaultAction": "native"
+        },
+        {
+          "id": "back",
+          "label": "Back",
+          "icon": "back",
+          "shape": "circle",
+          "bounds": {
+            "x": 140,
+            "y": 175,
+            "width": 70,
+            "height": 70
+          },
+          "defaultAction": "native"
+        },
+        {
+          "id": "home",
+          "label": "Home",
+          "icon": "home",
+          "shape": "circle",
+          "bounds": {
+            "x": 30,
+            "y": 270,
+            "width": 70,
+            "height": 70
+          },
+          "defaultAction": "native"
+        },
+        {
+          "id": "menu",
+          "label": "Menu",
+          "icon": "menu",
+          "shape": "circle",
+          "bounds": {
+            "x": 140,
+            "y": 270,
+            "width": 70,
+            "height": 70
+          },
+          "defaultAction": "native"
+        }
+      ]
+    }
+  }
+}

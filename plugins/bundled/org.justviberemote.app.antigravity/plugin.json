@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 3,
+  "apiVersion": 3,
+  "id": "org.justviberemote.app.antigravity",
+  "version": "1.0.0",
+  "name": "Antigravity",
+  "author": "JustVibeRemote",
+  "kind": "app",
+  "platforms": [
+    "macos"
+  ],
+  "capabilities": [
+    "target.focus",
+    "input.shortcuts"
+  ],
+  "app": {
+    "adapter": "shortcuts",
+    "targets": {
+      "macos": {
+        "bundleIds": [
+          "com.google.antigravity"
+        ],
+        "names": [
+          "Antigravity"
+        ]
+      }
+    },
+    "actions": {
+      "focus": {
+        "operation": "focus"
+      },
+      "send": {
+        "operation": "tap-shortcut",
+        "shortcuts": {
+          "macos": "RETURN"
+        }
+      },
+      "backspace": {
+        "operation": "tap-shortcut",
+        "shortcuts": {
+          "macos": "BACKSPACE"
+        }
+      },
+      "escape": {
+        "operation": "tap-shortcut",
+        "shortcuts": {
+          "macos": "ESC"
+        }
+      },
+      "dictate": {
+        "operation": "toggle-shortcut",
+        "shortcuts": {
+          "macos": "CTRL+M"
+        }
+      }
+    }
+  }
+}

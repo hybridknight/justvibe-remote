@@ -1,0 +1,62 @@
+{
+  "schemaVersion": 1,
+  "apiVersion": 1,
+  "id": "com.example.justviberemote.editor",
+  "version": "1.0.0",
+  "name": "Example Editor",
+  "author": "Your name",
+  "kind": "app",
+  "platforms": [
+    "macos",
+    "windows"
+  ],
+  "capabilities": [
+    "target.focus",
+    "input.shortcuts"
+  ],
+  "app": {
+    "adapter": "shortcuts",
+    "targets": {
+      "macos": {
+        "bundleIds": [
+          "com.example.editor"
+        ],
+        "names": [
+          "Example Editor"
+        ]
+      },
+      "windows": {
+        "bundleIds": [],
+        "names": [
+          "ExampleEditor"
+        ]
+      }
+    },
+    "actions": {
+      "focus": {
+        "operation": "focus"
+      },
+      "send": {
+        "operation": "tap-shortcut",
+        "shortcuts": {
+          "macos": "RETURN",
+          "windows": "ENTER"
+        }
+      },
+      "backspace": {
+        "operation": "tap-shortcut",
+        "shortcuts": {
+          "macos": "BACKSPACE",
+          "windows": "BACKSPACE"
+        }
+      },
+      "escape": {
+        "operation": "tap-shortcut",
+        "shortcuts": {
+          "macos": "ESC",
+          "windows": "ESC"
+        }
+      }
+    }
+  }
+}

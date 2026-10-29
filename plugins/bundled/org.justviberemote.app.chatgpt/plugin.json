@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 1,
+  "apiVersion": 1,
+  "id": "org.justviberemote.app.chatgpt",
+  "version": "1.1.1",
+  "name": "ChatGPT",
+  "author": "JustVibeRemote",
+  "kind": "app",
+  "platforms": [
+    "macos",
+    "windows"
+  ],
+  "capabilities": [
+    "target.focus",
+    "input.shortcuts"
+  ],
+  "app": {
+    "adapter": "shortcuts",
+    "targets": {
+      "macos": {
+        "bundleIds": [
+          "com.openai.codex"
+        ],
+        "names": [
+          "ChatGPT",
+          "Codex"
+        ]
+      },
+      "windows": {
+        "bundleIds": [],
+        "names": [
+          "ChatGPT",
+          "Codex"
+        ]
+      }
+    },
+    "actions": {
+      "focus": {
+        "operation": "focus"
+      },
+      "dictate": {
+        "operation": "hold-shortcut",
+        "shortcuts": {
+          "macos": "CTRL+M",
+          "windows": "CTRL+M"
+        }
+      },
+      "send": {
+        "operation": "tap-shortcut",
+        "shortcuts": {
+          "macos": "RETURN",
+          "windows": "ENTER"
+        }
+      },
+      "backspace": {
+        "operation": "tap-shortcut",
+        "shortcuts": {
+          "macos": "BACKSPACE",
+          "windows": "BACKSPACE"
+        }
+      },
+      "escape": {
+        "operation": "tap-shortcut",
+        "shortcuts": {
+          "macos": "ESC",
+          "windows": "ESC"
+        }
+      }
+    }
+  }
+}

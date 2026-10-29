@@ -1,0 +1,57 @@
+# macOS and Windows metadata
+.DS_Store
+._*
+Thumbs.db
+Desktop.ini
+
+# Build and distribution outputs
+/build/
+/dist/
+**/bin/
+**/obj/
+.build/
+.swiftpm/
+DerivedData/
+node_modules/
+
+# Local Xcode and Visual Studio state
+xcuserdata/
+*.xcuserstate
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.swp
+*.swo
+*~
+
+# Test outputs
+TestResults/
+*.trx
+coverage/
+htmlcov/
+.coverage
+.coverage.*
+
+# Local research and investigation notes
+/research/
+
+# Python caches and virtual environments
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Local environment settings (keep shareable examples)
+.env
+.env.*
+!.env.example
+!.env.sample
+!.env.template
+
+# Local development notes, research, and artwork prompts
+/doc/
