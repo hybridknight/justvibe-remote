@@ -21,6 +21,15 @@ final class RemoteController {
     private(set) var buttonTestFailure:String?
     var displayedUsages:Set<Usage> { buttonTest.highlights(active:activeUsages,now:ProcessInfo.processInfo.systemUptime) }
     private var testHeldUsages=Set<Usage>()
+    private var testUsingMappings=false
+    private func isolateTestButtons() throws {
+        try mappings.apply(profile:config.profile,groups:input.interfaceGroups,sources:Set(input.testButtonUsages.map(\.hidutilCode)),testMode:true)
+        testUsingMappings=true
+    }
+    private func openButtonCapture(_ enabled:Bool) throws -> String? {
+        testUsingMappings=false
+        return try ButtonTestCapture.transition(enabled:enabled,isolate:{ try self.isolateTestButtons() },reopen:{ try self.input.start(self.config.profile,exclusive:$0) })
+    }
     func setButtonTestMode(_ enabled:Bool) {
         if !enabled { buttonTestFailure=nil }
         guard enabled != buttonTestMode, !(enabled && buttonTestFailure != nil) else { return }
@@ -36,7 +45,7 @@ final class RemoteController {
         do {
             guard !voiceActive else { throw JustVibeRemoteError.message("Dictation could not be stopped. Reconnect before testing.") }
             try mappings.restore();mappingReady=false
-            let failure=try ButtonTestCapture.transition(enabled:enabled) { try input.start(config.profile,exclusive:$0) }
+            let failure=try openButtonCapture(enabled)
             if let failure {
                 // Retain the normal connection, but never claim unsuppressed input is a test.
                 buttonTestFailure=failure;buttonTest.setEnabled(false)
@@ -240,6 +249,15 @@ final class RemoteController {
         input.onDevices = { [weak self] count in
             guard let self else { return }
             self.connected = count
+            if self.running,self.buttonTestMode,self.testUsingMappings,count>0 {
+                do { try self.isolateTestButtons() }
+                catch {
+                    let failure=error.localizedDescription
+                    self.buttonTestFailure=failure;self.buttonTest.setEnabled(false)
+                    try? self.stop();self.status="Button testing stopped: " + failure
+                    self.changed?();return
+                }
+            }
             if self.running {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in self?.updateMappings() }
             }
@@ -274,7 +292,7 @@ final class RemoteController {
             if !RemoteInput.allowed { RemoteInput.requestPermission() }
             if !TargetOutput.allowed { TargetOutput.requestPermission() }
             guard TargetOutput.allowed else { throw JustVibeRemoteError.message("Enable Accessibility for JustVibe Remote, then click Start again.") }
-            if let failure=try ButtonTestCapture.transition(enabled:buttonTestMode,reopen:{ try input.start(config.profile,exclusive:$0) }) {
+            if let failure=try openButtonCapture(buttonTestMode) {
                 buttonTestFailure=failure;buttonTest.setEnabled(false)
             }
             running = true
@@ -295,7 +313,7 @@ final class RemoteController {
         pendingVoice = false
         var failure: Error?
         do { try output.release(); voice.commit(false, now: Date().timeIntervalSince1970);releaseVoice?() } catch { failure = error }
-        input.stop()
+        input.stop();testUsingMappings=false
         mappingReady = false
         do { try mappings.restore() } catch { failure = failure ?? error }
         if cursorActive {
@@ -308,6 +326,7 @@ final class RemoteController {
     }
     func update(_ proposed: Configuration) throws {
         var newConfig = proposed
+        newConfig.suppressOriginal=true
         newConfig.usesSystemDictation=false;newConfig.systemDictationTargetPID=nil
         if let sessionDeviceID, newConfig.devicePluginID != sessionDeviceID {
             throw JustVibeRemoteError.message("Open the other remote from Remotes to configure it.")
@@ -367,7 +386,7 @@ final class RemoteController {
     }
     func stopVoice() { finishVoice() }
     func testVoice() {
-        guard !buttonTestMode else { status="Leave the Buttons page to try dictation in your app";changed?();return }
+        guard !buttonTestMode else { status="Leave the Button test page to try dictation in your app";changed?();return }
         guard running else { status = "Connect your remote first"; changed?(); return }
         if voice.held || pendingVoice { finishVoice() }
         else if config.followActiveApp { showTargetApp(); status = "Use the remote’s microphone button in the app to test its active mapping"; changed?() }
@@ -378,9 +397,7 @@ final class RemoteController {
         if buttonTestMode { mappingReady=false;changed?();return }
         do {
             let sources = Set((learning == nil ? routedConfig?.bindings ?? [] : []).filter { $0.action != .native }.compactMap { $0.usage?.hidutilCode })
-            if config.suppressOriginal {
-                try mappings.apply(profile: config.profile, groups: input.interfaceGroups, sources: sources)
-            } else { try mappings.restore() }
+            try mappings.apply(profile: config.profile, groups: input.interfaceGroups, sources: sources)
             mappingReady = true
             status = learning == nil ? "Connected · \(config.profile.hardwareID) · app plugin ready" : status
         } catch {

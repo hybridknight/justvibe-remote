@@ -10,6 +10,8 @@ final class RemoteCanvas: NSView {
     override var isFlipped: Bool { true }
     private var remoteLayout: RemoteLayout?
     private var controls: [RemoteGraphicButton] = []
+    var isInteractive=true
+    var testing=false
     var selected: ((String) -> Void)?
     func update(layout: RemoteLayout, bindings: [Binding], selection: String?, active: Set<Usage>) {
         if remoteLayout != layout {
@@ -25,10 +27,12 @@ final class RemoteCanvas: NSView {
         }
         for button in controls {
             let binding = bindings.first { $0.controlID == button.control.id || (button.control.id.hasPrefix("button-") && $0.name == button.control.label) }
+            button.isEnabled=isInteractive
+            button.setAccessibilityHelp(testing ? "Select this button, then press its physical counterpart to link and test an unlinked signal.":isInteractive ? "Select this physical button to learn its signal and change its action.":"Press this button on your physical remote to see it light up.")
             button.chosen = button.control.id == selection
             button.learned = binding?.usage != nil
             button.live = binding?.usage.map { active.contains($0) } ?? false
-            button.toolTip = "\(button.control.label) · \(binding?.usage == nil ? "Not learned" : "Linked") · Click to configure"
+            button.toolTip = "\(button.control.label) · \(binding?.usage == nil ? "Not learned" : "Linked")" + (testing ? " · Click to select for testing":isInteractive ? " · Click to configure":"")
             button.needsDisplay = true
         }
         needsDisplay = true

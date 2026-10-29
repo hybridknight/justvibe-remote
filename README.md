@@ -49,7 +49,7 @@ On macOS:
 4. For voice, confirm the app’s dictation shortcut, choose and test the remote’s microphone, and select the same input inside the target app. Save your voice settings.
 5. Switch to the target app and try the remote. **Follow active app** uses the configured controls for the app in front.
 
-On macOS, **Buttons** tests and learns controls while JustVibe Remote is in front; switch to your target app to use assigned actions.
+On macOS, mapped buttons automatically replace their original actions; unmapped buttons keep their normal behavior. This behavior is always enabled. **Buttons** links controls and assigns actions. Choose **Button test…** at the bottom of that page to open a separate test view with the same remote layout. Linked buttons light up when pressed. To test an unlinked button, select it on the picture and press its physical counterpart; that observed signal is saved for the remote across its app profiles. Existing links can be changed with **Relink button**. While test capture is available and that view is in front, presses highlight the remote without sending app actions; macOS exclusive capture is preferred, with a fallback that temporarily blocks the selected receiver’s keyboard and media-button actions using verified device-specific mappings. Those mappings are restored on exit; testing stops if isolation cannot be confirmed. A notice explains when test capture is unavailable. Leave the test page or switch to your target app to resume assigned actions.
 
 ### Dictation in any app (macOS)
 

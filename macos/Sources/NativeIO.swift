@@ -19,6 +19,7 @@ final class RemoteInput {
     var onDevices: ((Int) -> Void)?
     var onDisconnected: (() -> Void)?
     private(set) var interfaceGroups = Set<InterfaceGroup>()
+    private(set) var testButtonUsages=Set<Usage>()
 
     struct InterfaceGroup: Hashable { let page: Int; let usage: Int }
     static var allowed: Bool { IOHIDCheckAccess(kIOHIDRequestTypeListenEvent) == kIOHIDAccessTypeGranted || CGPreflightListenEventAccess() }
@@ -74,6 +75,20 @@ final class RemoteInput {
     }
     private func reportCount() {
         let devices = manager.flatMap { IOHIDManagerCopyDevices($0) as? Set<IOHIDDevice> } ?? []
+        interfaceGroups=Set(devices.map { device in
+            InterfaceGroup(page:(IOHIDDeviceGetProperty(device,kIOHIDPrimaryUsagePageKey as CFString) as? NSNumber)?.intValue ?? 0,
+                           usage:(IOHIDDeviceGetProperty(device,kIOHIDPrimaryUsageKey as CFString) as? NSNumber)?.intValue ?? 0)
+        })
+        var usages=Set<Usage>()
+        for device in devices {
+            for element in IOHIDDeviceCopyMatchingElements(device,nil,0) as? [IOHIDElement] ?? [] {
+                let type=IOHIDElementGetType(element)
+                guard type == kIOHIDElementTypeInput_Button || type == kIOHIDElementTypeInput_ScanCodes || type == kIOHIDElementTypeInput_Misc else { continue }
+                let usage=Usage(page:IOHIDElementGetUsagePage(element),code:IOHIDElementGetUsage(element))
+                if usage.isButton || (usage.page == 7 && (0xE0...0xE7).contains(usage.code)) { usages.insert(usage) }
+            }
+        }
+        testButtonUsages=usages
         onDevices?(devices.count)
     }
     func stop() {
@@ -88,7 +103,7 @@ final class RemoteInput {
         }
         manager = nil
         pressed.removeAll()
-        interfaceGroups.removeAll()
+        interfaceGroups.removeAll();testButtonUsages.removeAll()
     }
 }
 

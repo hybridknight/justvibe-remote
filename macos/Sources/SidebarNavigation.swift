@@ -41,12 +41,12 @@ final class SidebarNavigation: NSView, NSTableViewDataSource, NSTableViewDelegat
             entries=[Entry(title:"Library",page:nil),Entry(title:WorkspacePage.remotes.title,page:.remotes),Entry(title:WorkspacePage.plugins.title,page:.plugins)]
             if let remoteName {
                 entries.append(Entry(title:remoteName,page:nil))
-                entries += WorkspacePage.allCases.filter(\.isRemoteScoped).map { Entry(title:$0.sidebarTitle,page:$0) }
+                entries += WorkspacePage.allCases.filter(\.isSidebarPage).map { Entry(title:$0.sidebarTitle,page:$0) }
             }
             entries += [Entry(title:"Resources",page:nil),Entry(title:WorkspacePage.help.title,page:.help)]
             table.reloadData()
         }
-        if let row=entries.firstIndex(where: { $0.page == page }),table.selectedRow != row {
+        if let row=entries.firstIndex(where: { $0.page == (page == .buttonTest ? .buttons:page) }),table.selectedRow != row {
             table.selectRowIndexes(IndexSet(integer:row),byExtendingSelection:false)
         }
     }

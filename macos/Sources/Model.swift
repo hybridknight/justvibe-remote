@@ -72,7 +72,7 @@ struct RemotePreferences: Codable, Equatable {
     init(_ config: Configuration) {
         selectedAppID = config.appPluginID
         followActiveApp = config.followActiveApp
-        suppressOriginal = config.suppressOriginal
+        suppressOriginal = true
         autoConnect = config.autoConnect
         setupCompleted = config.remoteSetupCompleted;setupCheckpoint = config.remoteSetupCheckpoint
     }
@@ -147,6 +147,7 @@ struct Configuration: Codable {
     var systemDictationTargetPID:Int32?
     var dictationTested = false
     var autoConnect = false
+    // Kept in saved settings for compatibility; mapped-action replacement is mandatory.
     var suppressOriginal = true
     init() {}
     /// Hardware signals belong to a remote; each app retains its own action.
@@ -191,7 +192,7 @@ struct Configuration: Codable {
         shortcut = try values.decode(String.self, forKey: .shortcut)
         shortcutConfirmed = try values.decode(Bool.self, forKey: .shortcutConfirmed)
         targetAppPath = try values.decode(String.self, forKey: .targetAppPath)
-        suppressOriginal = try values.decode(Bool.self, forKey: .suppressOriginal)
+        suppressOriginal = true
         dictationTested = try values.decodeIfPresent(Bool.self, forKey: .dictationTested) ?? false
         autoConnect = try values.decodeIfPresent(Bool.self, forKey: .autoConnect) ?? false
         remoteSetupCompleted = try values.decodeIfPresent(Bool.self, forKey: .remoteSetupCompleted)

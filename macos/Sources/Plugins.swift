@@ -200,11 +200,11 @@ enum PluginSelection {
         let actions=app?.app ?? AppRouting.sharedActions
         let configuredPair=config.appPluginID == appID && config.devicePluginID == deviceID || config.bindingSets[AppRouting.key(deviceID,appID)] != nil || config.appMappings[AppRouting.key(deviceID,appID)] != nil
         var next = config
+        next.suppressOriginal = true
         next.remotePreferences[config.devicePluginID] = RemotePreferences(config)
         if deviceID != config.devicePluginID {
             let preferences = config.remotePreferences[deviceID]
             next.followActiveApp = preferences?.followActiveApp ?? true
-            next.suppressOriginal = preferences?.suppressOriginal ?? true
             next.autoConnect = preferences?.autoConnect ?? false
             next.remoteSetupCompleted = preferences?.setupCompleted ?? false
             next.remoteSetupCheckpoint = preferences?.setupCheckpoint

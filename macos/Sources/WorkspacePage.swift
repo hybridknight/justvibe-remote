@@ -2,8 +2,9 @@ import AppKit
 
 /// Navigation is presentation-only; changing pages never changes the active profile.
 enum WorkspacePage: String, CaseIterable {
-    case remotes, overview, apps, buttons, voice, devices, plugins, help
-    var isRemoteScoped: Bool { [.overview, .apps, .buttons, .voice, .devices].contains(self) }
+    case remotes, overview, apps, buttons, voice, devices, plugins, help, buttonTest
+    var isRemoteScoped: Bool { [.overview, .apps, .buttons, .voice, .devices, .buttonTest].contains(self) }
+    var isSidebarPage:Bool { isRemoteScoped && self != .buttonTest }
     var index: Int { Self.allCases.firstIndex(of:self)! }
     var title: String {
         switch self {
@@ -11,6 +12,7 @@ enum WorkspacePage: String, CaseIterable {
         case .plugins: return "Plugins"
         case .overview: return "Overview"
         case .buttons: return "Buttons"
+        case .buttonTest: return "Button test"
         case .voice: return "Microphone test"
         case .apps: return "Apps"
         case .devices: return "Remote settings"
@@ -30,6 +32,7 @@ enum WorkspacePage: String, CaseIterable {
         case .plugins: return "Browse installed support for your remotes and apps."
         case .overview: return "Set up this remote, then choose its apps and button actions."
         case .buttons: return "Choose a button, link it, then pick what it does."
+        case .buttonTest: return "Press your remote to check its buttons."
         case .voice: return "Check the audio from your remote."
         case .apps: return "Apps supported by this remote."
         case .devices: return "Connection, cursor, and behavior settings for this remote."
@@ -42,6 +45,7 @@ enum WorkspacePage: String, CaseIterable {
         case .plugins: return "puzzlepiece.extension"
         case .overview: return "square.grid.2x2"
         case .buttons: return "circle.grid.2x2"
+        case .buttonTest: return "checkmark.circle"
         case .voice: return "waveform"
         case .apps: return "app"
         case .devices: return "slider.horizontal.3"

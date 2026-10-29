@@ -582,6 +582,10 @@ import Foundation
         var firstRemote=original
         firstRemote.bindings=try visual.bindings(preserving:firstRemote.bindings)
         firstRemote.followActiveApp=true;firstRemote.suppressOriginal=false;firstRemote.autoConnect=true
+        let legacyReplacement=try JSONDecoder().decode(Configuration.self,from:JSONEncoder().encode(firstRemote))
+        check(legacyReplacement.suppressOriginal,"legacy saved settings cannot disable mapped-action replacement")
+        let mandatoryReplacement=try PluginSelection.select(firstRemote,catalog:multiCatalog,deviceID:firstRemote.devicePluginID,appID:firstRemote.appPluginID)
+        check(mandatoryReplacement.suppressOriginal,"switching profiles always enables mapped-action replacement")
         firstRemote.microphones[firstRemote.devicePluginID]=MicrophonePreference(id:"first-mic",name:"First mic",guardDictation:false)
         let firstButtons=firstRemote.bindings
         var secondRemote=try PluginSelection.selectRemote(firstRemote,catalog:multiCatalog,deviceID:secondID)
@@ -596,7 +600,7 @@ import Foundation
         firstRemote=try PluginSelection.selectRemote(secondRemote,catalog:multiCatalog,deviceID:original.devicePluginID)
         check(firstRemote.appPluginID == original.appPluginID,"returning to a remote restores its own selected app")
         check(firstRemote.bindings == firstButtons,"first remote retains its button mappings")
-        check(firstRemote.followActiveApp && !firstRemote.suppressOriginal && firstRemote.autoConnect,"returning restores that remote's routing and device behavior")
+        check(firstRemote.followActiveApp && firstRemote.suppressOriginal && firstRemote.autoConnect,"returning restores routing and auto-connect while keeping mapped-action replacement mandatory")
         secondRemote=try PluginSelection.selectRemote(firstRemote,catalog:multiCatalog,deviceID:secondID)
         check(secondRemote.appPluginID == editorID && secondRemote.bindings == secondButtons,"second remote restores its independent app and learned buttons")
         check(secondRemote.microphones[original.devicePluginID]?.id == "first-mic","per-remote microphone choices remain intact")

@@ -17,6 +17,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var voiceTestClosing=false
     private var window: NSWindow!
     private let canvas = RemoteCanvas()
+    private let buttonTestCanvas=RemoteCanvas()
     private var mappingBoard:RemoteMappingBoard!
     private let dictationBinding=NSTextField(labelWithString: "")
     private let dictationBindingHelp=NSTextField(wrappingLabelWithString: "")
@@ -36,13 +37,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private let buttonTestTitle=NSTextField(labelWithString: "TEST MODE")
     private var testConnectButton:NSButton!
     private let buttonTestStatus=NSTextField(wrappingLabelWithString: "")
+    private let buttonTestSelection=NSTextField(wrappingLabelWithString: "")
+    private var testLearnButton:NSButton!
+    private var testCancelButton:NSButton!
     private let progress = NSTextField(labelWithString: "")
     private let status = NSTextField(wrappingLabelWithString: "")
     private let badge = NSTextField(labelWithString: "  Not connected  ")
     private let shortcut = ShortcutRecorder(frame:.zero)
     private let confirmed = NSButton(checkboxWithTitle: "Matches my app’s hold-to-dictate shortcut", target:nil, action:nil)
     private let toggle = NSButton(checkboxWithTitle: "Press once to start, again to stop",target:nil,action:nil)
-    private let suppress = NSButton(checkboxWithTitle: "Replace original actions for mapped buttons",target:nil,action:nil)
     private let voiceSection = NSStackView()
     private var connectButton: NSButton!
     private var learnButton: NSButton!
@@ -211,7 +214,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         NSLayoutConstraint.activate([status.leadingAnchor.constraint(equalTo:sidebar.trailingAnchor,constant:30),status.trailingAnchor.constraint(equalTo:root.trailingAnchor,constant:-28),status.bottomAnchor.constraint(equalTo:root.bottomAnchor,constant:-16),status.heightAnchor.constraint(equalToConstant:32)])
         root.addSubview(pageHost);pageHost.translatesAutoresizingMaskIntoConstraints=false
         NSLayoutConstraint.activate([pageHost.leadingAnchor.constraint(equalTo:sidebar.trailingAnchor,constant:28),pageHost.trailingAnchor.constraint(equalTo:root.trailingAnchor,constant:-28),pageHost.topAnchor.constraint(equalTo:header.bottomAnchor,constant:16),pageHost.bottomAnchor.constraint(equalTo:status.topAnchor,constant:-12)])
-        pages[.remotes]=makeRemotes();pages[.plugins]=makePlugins();pages[.overview]=makeOverview();pages[.buttons]=makeButtons();pages[.voice]=makeVoice();pages[.apps]=makeApps();pages[.devices]=makeDevices();pages[.help]=makeHelp()
+        pages[.remotes]=makeRemotes();pages[.plugins]=makePlugins();pages[.overview]=makeOverview();pages[.buttons]=makeButtons();pages[.buttonTest]=makeButtonTest();pages[.voice]=makeVoice();pages[.apps]=makeApps();pages[.devices]=makeDevices();pages[.help]=makeHelp()
         for page in WorkspacePage.allCases { guard let view=pages[page] else { continue };pageHost.addSubview(view);view.translatesAutoresizingMaskIntoConstraints=false
             NSLayoutConstraint.activate([view.leadingAnchor.constraint(equalTo:pageHost.leadingAnchor),view.trailingAnchor.constraint(equalTo:pageHost.trailingAnchor),view.topAnchor.constraint(equalTo:pageHost.topAnchor),view.bottomAnchor.constraint(equalTo:pageHost.bottomAnchor)])
         }
@@ -366,6 +369,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         addCard(start,to:stack)
         return scrollPage(stack)
     }
+    private func makeButtonTest()->NSView {
+        let page=NSView()
+        let intro=vertical(spacing:12)
+        let testInfo=vertical(spacing:4)
+        buttonTestTitle.font = .systemFont(ofSize:13,weight:.semibold);buttonTestTitle.textColor = .rvAccent
+        testInfo.addArrangedSubview(buttonTestTitle)
+        buttonTestStatus.font = .systemFont(ofSize:11);buttonTestStatus.textColor = .rvMuted
+        testInfo.addArrangedSubview(buttonTestStatus)
+        testConnectButton=button("Connect to test",#selector(connect))
+        testInfo.addArrangedSubview(button("Back to buttons",#selector(openButtons)))
+        let testBanner=card(horizontal([testInfo,spacer(),testConnectButton],spacing:12),padding:12)
+        intro.addArrangedSubview(testBanner);testBanner.widthAnchor.constraint(equalTo:intro.widthAnchor).isActive=true
+        buttonTestStatus.widthAnchor.constraint(lessThanOrEqualTo:intro.widthAnchor,constant:-170).isActive=true
+        let artwork=WorkspaceSurface(.artwork)
+        let linkingHint=NSTextField(wrappingLabelWithString:"Linked buttons light up when pressed. To test an unlinked button, click it on the picture, then press that same button on your remote. Its link is shared across app profiles.")
+        linkingHint.font = .systemFont(ofSize:12);linkingHint.textColor = .rvMuted
+        intro.addArrangedSubview(linkingHint);linkingHint.widthAnchor.constraint(equalTo:intro.widthAnchor).isActive=true
+        buttonTestSelection.font = .systemFont(ofSize:12,weight:.medium)
+        testLearnButton=button("Link button",#selector(learn));testCancelButton=button("Cancel linking",#selector(cancelLearning))
+        let linkingControls=horizontal([buttonTestSelection,spacer(),testLearnButton!,testCancelButton!],spacing:12)
+        intro.addArrangedSubview(linkingControls);linkingControls.widthAnchor.constraint(equalTo:intro.widthAnchor).isActive=true
+        buttonTestCanvas.testing=true
+        buttonTestCanvas.selected={ [weak self] id in
+            guard let self else { return }
+            self.selectControl(id)
+            if self.controller.buttonTestMode,self.controller.config.bindings[self.selectedIndex].usage == nil { self.controller.learn(self.selectedIndex) }
+        }
+        artwork.addSubview(buttonTestCanvas);buttonTestCanvas.translatesAutoresizingMaskIntoConstraints=false
+        for view in [intro,artwork] { page.addSubview(view);view.translatesAutoresizingMaskIntoConstraints=false }
+        NSLayoutConstraint.activate([
+            intro.leadingAnchor.constraint(equalTo:page.leadingAnchor),intro.trailingAnchor.constraint(equalTo:page.trailingAnchor),intro.topAnchor.constraint(equalTo:page.topAnchor),
+            artwork.leadingAnchor.constraint(equalTo:page.leadingAnchor),artwork.trailingAnchor.constraint(equalTo:page.trailingAnchor),artwork.topAnchor.constraint(equalTo:intro.bottomAnchor,constant:16),artwork.bottomAnchor.constraint(equalTo:page.bottomAnchor),
+            buttonTestCanvas.leadingAnchor.constraint(equalTo:artwork.leadingAnchor,constant:20),buttonTestCanvas.trailingAnchor.constraint(equalTo:artwork.trailingAnchor,constant:-20),buttonTestCanvas.topAnchor.constraint(equalTo:artwork.topAnchor,constant:12),buttonTestCanvas.bottomAnchor.constraint(equalTo:artwork.bottomAnchor,constant:-12)
+        ])
+        return page
+    }
     private func makeButtons()->NSView {
         let page=NSView()
         appIconSelector.selected={ [weak self] appID in self?.selectAppProfile(appID) }
@@ -374,16 +413,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         appIconSelector.widthAnchor.constraint(equalTo:intro.widthAnchor).isActive=true
         appIconSelector.heightAnchor.constraint(equalToConstant:88).isActive=true
         progress.font = .systemFont(ofSize:11);progress.textColor = .rvMuted
-        let testInfo=vertical(spacing:4)
-        buttonTestTitle.font = .systemFont(ofSize:13,weight:.semibold);buttonTestTitle.textColor = .rvAccent
-        testInfo.addArrangedSubview(buttonTestTitle)
-        buttonTestStatus.font = .systemFont(ofSize:11);buttonTestStatus.textColor = .rvMuted
-        testInfo.addArrangedSubview(buttonTestStatus)
-        testConnectButton=button("Connect to test",#selector(connect))
-        let testBanner=card(horizontal([testInfo,spacer(),testConnectButton],spacing:12),padding:12)
-        intro.addArrangedSubview(testBanner);testBanner.widthAnchor.constraint(equalTo:intro.widthAnchor).isActive=true
-        buttonTestStatus.widthAnchor.constraint(lessThanOrEqualTo:intro.widthAnchor,constant:-170).isActive=true
-        intro.addArrangedSubview(horizontal([label("Press your remote to highlight its buttons. Switch to your app to use its actions.",size:11,color:.rvMuted),spacer(),progress],spacing:8))
+        intro.addArrangedSubview(horizontal([label("Link your remote’s buttons and choose their actions.",size:11,color:.rvMuted),spacer(),progress],spacing:8))
         intro.arrangedSubviews.last?.widthAnchor.constraint(equalTo:intro.widthAnchor).isActive=true
         mappingBoard=RemoteMappingBoard(canvas:canvas)
         mappingBoard.selected={ [weak self] id in self?.selectControl(id) }
@@ -432,11 +462,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         actionHelp.widthAnchor.constraint(equalTo:assignment.widthAnchor).isActive=true
         dictationBindingHelp.widthAnchor.constraint(equalTo:voiceSection.widthAnchor).isActive=true
         let inspector=card(columns,padding:18)
-        for view in [intro,mappingBoard!,inspector] { page.addSubview(view);view.translatesAutoresizingMaskIntoConstraints=false }
+        let testLink=horizontal([spacer(),button("Button test…",#selector(openButtonTest))],spacing:8)
+        for view in [intro,mappingBoard!,inspector,testLink] { page.addSubview(view);view.translatesAutoresizingMaskIntoConstraints=false }
         NSLayoutConstraint.activate([
             intro.topAnchor.constraint(equalTo:page.topAnchor),intro.leadingAnchor.constraint(equalTo:page.leadingAnchor),intro.trailingAnchor.constraint(equalTo:page.trailingAnchor),
-            mappingBoard.topAnchor.constraint(equalTo:intro.bottomAnchor,constant:12),mappingBoard.leadingAnchor.constraint(equalTo:page.leadingAnchor),mappingBoard.bottomAnchor.constraint(equalTo:page.bottomAnchor),
-            inspector.leadingAnchor.constraint(equalTo:mappingBoard.trailingAnchor,constant:20),inspector.trailingAnchor.constraint(equalTo:page.trailingAnchor),inspector.topAnchor.constraint(equalTo:mappingBoard.topAnchor,constant:12),inspector.bottomAnchor.constraint(lessThanOrEqualTo:page.bottomAnchor),inspector.widthAnchor.constraint(equalToConstant:250)
+            mappingBoard.topAnchor.constraint(equalTo:intro.bottomAnchor,constant:12),mappingBoard.leadingAnchor.constraint(equalTo:page.leadingAnchor),mappingBoard.bottomAnchor.constraint(equalTo:testLink.topAnchor,constant:-12),
+            inspector.leadingAnchor.constraint(equalTo:mappingBoard.trailingAnchor,constant:20),inspector.trailingAnchor.constraint(equalTo:page.trailingAnchor),inspector.topAnchor.constraint(equalTo:mappingBoard.topAnchor,constant:12),inspector.bottomAnchor.constraint(lessThanOrEqualTo:testLink.topAnchor,constant:-12),inspector.widthAnchor.constraint(equalToConstant:250),
+            testLink.leadingAnchor.constraint(equalTo:page.leadingAnchor),testLink.trailingAnchor.constraint(equalTo:page.trailingAnchor),testLink.bottomAnchor.constraint(equalTo:page.bottomAnchor)
         ])
         return page
     }
@@ -568,8 +600,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         artworkControls.addArrangedSubview(button("Choose image…",#selector(chooseArtwork)))
         resetArtworkButton=button("Use remote design",#selector(resetArtwork));artworkControls.addArrangedSubview(resetArtworkButton)
         artwork.addArrangedSubview(horizontal([remoteArtworkPreview,artworkControls,spacer()],spacing:20));addCard(artwork,to:stack)
-        let behavior=section("Button behavior","Replace the original behavior only for buttons you have mapped. Unmapped buttons keep their normal behavior.")
-        behavior.addArrangedSubview(suppress);behavior.addArrangedSubview(button("Save button behavior",#selector(saveBehavior)));addCard(behavior,to:stack)
+        let behavior=section("Button behavior","Mapped buttons automatically replace their original actions. Unmapped buttons keep their normal behavior.")
+        addCard(behavior,to:stack)
         return scrollPage(stack)
     }
     private func makePlugins()->NSView {
@@ -681,12 +713,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         // A single remote needs no library selection before showing its menu.
         if libraryDevices.count == 1 { remoteWorkspaceOpen=true }
         if page.isRemoteScoped && !remoteWorkspaceOpen { showPage(.remotes);return }
-        if currentPage == .buttons && page != .buttons { controller.cancelLearning() }
+        if (currentPage == .buttons || currentPage == .buttonTest) && page != currentPage { controller.cancelLearning() }
         if currentPage == .voice && page != .voice { clearVoiceMicrophoneTest() }
         if page == .remotes { remoteWorkspaceOpen=libraryDevices.count == 1;rebuildRemoteLibrary() }
         currentPage=page
         pageTitle.stringValue=page == .overview ? (controller.devicePlugin?.name ?? "Remote overview") : page.title
-        pageSubtitle.stringValue=page.isRemoteScoped ? "\(controller.devicePlugin?.name ?? "Remote") · \(page == .buttons ? "App: " + (controller.appPlugin?.name ?? "No specific app") : page.subtitle)" : page.subtitle
+        pageSubtitle.stringValue=page == .buttons ? (controller.devicePlugin?.name ?? "Remote") : page.isRemoteScoped ? "\(controller.devicePlugin?.name ?? "Remote") · \(page.subtitle)" : page.subtitle
         for (key,view) in pages { view.isHidden=key != page }
         sidebarNavigation.update(page:page,remoteName:remoteWorkspaceOpen ? controller.devicePlugin?.name ?? "Selected remote":nil)
         if !sidebarNavigation.hasKeyboardFocus { window?.makeFirstResponder(nil) }
@@ -694,6 +726,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
     @objc private func navigateMenu(_ sender:NSMenuItem) { if let page=WorkspacePage.allCases.first(where:{$0.index == sender.tag}) { showPage(page) } }
     @objc private func openButtons() { showPage(.buttons) }
+    @objc private func openButtonTest() { showPage(.buttonTest) }
     @objc private func openVoice() { showPage(.voice) }
     @objc private func openApps() { showPage(.apps) }
     @objc private func openDevices() { showPage(.devices) }
@@ -715,7 +748,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             selectedIndex=0;populatePlugins();loadEditable();showPage(remoteWorkspaceOpen ? currentPage:.remotes);refresh()
         } catch { show(error) }
     }
-    @objc private func saveBehavior() { var config=controller.config;config.suppressOriginal=suppress.state == .on;do { try controller.update(config);refresh() } catch { show(error) } }
 
     private func label(_ text:String,size:CGFloat,weight:NSFont.Weight = .regular,color:NSColor = .rvInk)->NSTextField { let value=NSTextField(labelWithString:text);value.font = .systemFont(ofSize:size,weight:weight);value.textColor=color;return value }
     private func vertical(spacing:CGFloat)->NSStackView { let view=NSStackView();view.orientation = .vertical;view.alignment = .leading;view.spacing=spacing;return view }
@@ -724,11 +756,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func button(_ text:String,_ selector:Selector,primary:Bool=false)->NSButton { let value:NSButton=primary ? PrimaryButton(title:text,target:self,action:selector) : NSButton(title:text,target:self,action:selector);value.bezelStyle = .rounded;value.controlSize = .large;if primary { value.bezelColor = .rvAccent;value.contentTintColor = .white };return value }
     private func pin(_ child:NSView,to parent:NSView,top:CGFloat,left:CGFloat,right:CGFloat) { parent.addSubview(child);child.translatesAutoresizingMaskIntoConstraints=false;NSLayoutConstraint.activate([child.leadingAnchor.constraint(equalTo:parent.leadingAnchor,constant:left),child.trailingAnchor.constraint(equalTo:parent.trailingAnchor,constant:-right),child.topAnchor.constraint(equalTo:parent.topAnchor,constant:top)]) }
     private func card(_ content:NSView,padding:CGFloat)->NSView { let view=WorkspaceSurface(.card);pin(content,to:view,top:padding,left:padding,right:padding);content.bottomAnchor.constraint(equalTo:view.bottomAnchor,constant:-padding).isActive=true;return view }
-    private func loadEditable() { shortcut.setShortcut(controller.config.shortcut);confirmed.state=controller.config.shortcutConfirmed ? .on:.off;toggle.state=controller.config.voiceMode == "toggle" ? .on:.off;suppress.state=controller.config.suppressOriginal ? .on:.off }
+    private func loadEditable() { shortcut.setShortcut(controller.config.shortcut);confirmed.state=controller.config.shortcutConfirmed ? .on:.off;toggle.state=controller.config.voiceMode == "toggle" ? .on:.off }
     private func refresh() {
         for session in sessions.controllers.values {
             session.setButtonTestMode(ButtonTestState.shouldEnable(
-                buttonsPageVisible:currentPage == .buttons && remoteWorkspaceOpen && session === controller,
+                page:currentPage,workspaceOpen:remoteWorkspaceOpen && session === controller,
                 appActive:NSApp.isActive,windowVisible:window?.isVisible == true,windowMiniaturized:window?.isMiniaturized == true))
         }
         guard controller.config.bindings.indices.contains(selectedIndex) else { selectedIndex=0;return }
@@ -779,21 +811,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
         let layout=controller.remoteLayout
         canvas.update(layout:layout,bindings:controller.config.bindings,selection:binding.controlID ?? "button-\(selectedIndex)",active:controller.displayedUsages)
+        buttonTestCanvas.update(layout:layout,bindings:controller.config.bindings,selection:binding.controlID,active:controller.buttonTestMode ? controller.displayedUsages:[])
+        let testLearning=controller.learningIndex != nil
+        buttonTestSelection.stringValue=testLearning ? "Press \(binding.name) on your physical remote…": "\(binding.name) · \(binding.usage == nil ? "Not linked":"Linked")"
+        testLearnButton.title=binding.usage == nil ? "Link button":"Relink button"
+        testLearnButton.isEnabled=controller.buttonTestMode && !testLearning
+        testCancelButton.isHidden = !testLearning
         let learningID=controller.learningIndex.map { controller.config.bindings[$0].controlID ?? "button-\($0)" }
         mappingBoard.update(layout:layout,bindings:controller.config.bindings,selection:binding.controlID ?? "button-\(selectedIndex)",actions:controller.availableActions,learningID:learningID,active:controller.displayedUsages,dictationShortcut:dictationShortcut)
         testConnectButton.title=controller.running ? "Disconnect":"Connect to test"
+        buttonTestTitle.textColor=controller.buttonTestFailure == nil ? .rvAccent:.systemOrange
+        buttonTestStatus.toolTip=controller.buttonTestFailure
         buttonTestTitle.stringValue = !controller.running || controller.connected == 0 ? "TEST MODE · Connect your remote to start" : controller.buttonTestMode ? "TEST MODE · App actions paused":"TEST MODE · Paused while using another app"
         if !controller.running { buttonTestStatus.stringValue="Connect your remote to test. " + controller.status }
         else if controller.connected == 0 { buttonTestStatus.stringValue="Waiting for the remote’s receiver. App actions are paused." }
-        else if let failure=controller.buttonTestFailure {
-            buttonTestTitle.stringValue="Button test unavailable · Remote connected"
-            buttonTestStatus.stringValue="Normal remote actions remain active. " + failure
+        else if controller.buttonTestFailure != nil {
+            buttonTestTitle.stringValue="Button testing paused"
+            buttonTestStatus.stringValue="Buttons can still trigger app actions. Return to Buttons to link and configure them."
         }
         else if !controller.buttonTestMode { buttonTestStatus.stringValue="Normal remote actions are active. Return to this window to test without sending actions." }
+        else if testLearning { buttonTestStatus.stringValue="Waiting for the selected physical button. App actions remain paused." }
         else if let usage=controller.buttonTest.lastUsage {
             let name=controller.config.bindings.first(where: { $0.usage == usage })?.name
-            buttonTestStatus.stringValue=name.map { "\($0) detected · no action sent" } ?? "Unlinked button detected (\(usage.label)) · select its button and choose Link."
-        } else { buttonTestStatus.stringValue="Press any remote button. It will light up without sending keys or starting dictation." }
+            buttonTestStatus.stringValue=name.map { "\($0) detected · no action sent" } ?? "Unlinked signal detected (\(usage.label)). Click the matching button on the picture, then press it again to link it."
+        } else { buttonTestStatus.stringValue="Press a linked button to see it light up. Click an unlinked button on the picture to link and test it." }
         let linkedCount=layout.buttons.filter { item in controller.config.bindings.contains { $0.controlID == item.id && $0.usage != nil } }.count
         progress.stringValue="\(linkedCount) of \(layout.buttons.count) buttons linked"
         badge.stringValue=controller.running ? controller.connected > 0 ? "  Connected  " : "  Looking for remote…  " : "  Not connected  "
@@ -802,7 +843,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         sidebarNavigation.update(page:currentPage,remoteName:remoteWorkspaceOpen ? controller.devicePlugin?.name ?? "Selected remote":nil)
         if currentPage.isRemoteScoped {
             pageTitle.stringValue=currentPage == .overview ? (controller.devicePlugin?.name ?? "Remote overview") : currentPage.title
-            pageSubtitle.stringValue="\(controller.devicePlugin?.name ?? "Remote") · \(currentPage == .buttons ? "App: " + (controller.appPlugin?.name ?? "No specific app") : currentPage.subtitle)"
+            pageSubtitle.stringValue=currentPage == .buttons ? (controller.devicePlugin?.name ?? "Remote") : "\(controller.devicePlugin?.name ?? "Remote") · \(currentPage.subtitle)"
         }
         rebuildRemoteLibrary()
         remoteArtworkPreview.reference=controller.artwork.image;remoteArtworkPreview.remoteLayout=controller.devicePlugin?.device?.layout
@@ -832,7 +873,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
         voiceStop.isHidden = !sessions.voiceActive
         if currentPage.isRemoteScoped {
-            status.stringValue=currentPage == .buttons && controller.running && controller.buttonTestFailure != nil ? "Remote connected · Button testing unavailable. Normal remote actions remain active." : currentPage == .buttons ? (controller.buttonTestMode ? "Test mode · switch to your app to resume normal remote actions. ":"Test mode paused · \(controller.routingLabel). ") + (controller.running ? "":controller.status) : controller.status.hasPrefix("Connected ·") ? "Remote connected · \(controller.routingLabel)" : (controller.status.hasPrefix("Learned ") ? "\(binding.name) linked. Choose what it does above." : controller.status)
+            status.stringValue=currentPage == .buttonTest && controller.running && controller.buttonTestFailure != nil ? "Remote connected · Button testing unavailable. Normal remote actions remain active." : currentPage == .buttonTest ? (controller.buttonTestMode ? "Test mode · switch to your app to resume normal remote actions. ":"Test mode paused · \(controller.routingLabel). ") + (controller.running ? "":controller.status) : controller.status.hasPrefix("Connected ·") ? "Remote connected · \(controller.routingLabel)" : (controller.status.hasPrefix("Learned ") ? "\(binding.name) linked. Choose what it does above." : controller.status)
         } else {
             let connected=libraryConnectedCount
             status.stringValue=libraryDevices.isEmpty ? "Add your first remote to get started.":"\(connected) \(connected == 1 ? "remote" : "remotes") connected. Each remote keeps its own settings."

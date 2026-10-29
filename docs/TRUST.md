@@ -7,7 +7,7 @@ JustVibe Remote was authored as a new project. No source, bridge, assets, or bin
 - Reads button events for the selected hardware identity after Start.
 - Saves button usage codes, mappings, shortcut text, the selected target application path, and per-device microphone IDs/names/safeguard preferences.
 - Activates the chosen Codex application and sends configured keyboard events.
-- On macOS, optionally uses the system `hidutil` executable with numeric device matching to replace mapped buttons' native actions. Original owned mappings are journaled first and restored when possible.
+- On macOS, uses the system `hidutil` executable with numeric device matching to replace mapped buttons' native actions. Original owned mappings are journaled first and restored when possible.
 
 ## What the app does not do
 

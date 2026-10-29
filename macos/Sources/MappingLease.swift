@@ -13,12 +13,15 @@ final class MappingLease {
             leases = try JSONDecoder().decode([Lease].self, from: Data(contentsOf: url))
         }
     }
-    func apply(profile: DeviceProfile, groups: Set<RemoteInput.InterfaceGroup>, sources: Set<UInt64>) throws {
+    func apply(profile: DeviceProfile, groups: Set<RemoteInput.InterfaceGroup>, sources: Set<UInt64>, testMode:Bool = false) throws {
         try restore()
+        if testMode && (sources.isEmpty || groups.isEmpty || sources.count>4096) {
+            throw JustVibeRemoteError.message("The receiver’s button layout could not be isolated for testing.")
+        }
         guard !sources.isEmpty else { return }
         do {
             for group in groups {
-                let owned = Set(sources.filter { group.usage == 6 && group.page == 1 ? $0 >> 32 == 7 : $0 >> 32 != 7 })
+                let owned = testMode ? sources:Set(sources.filter { group.usage == 6 && group.page == 1 ? $0 >> 32 == 7 : $0 >> 32 != 7 })
                 guard !owned.isEmpty else { continue }
                 let matching = "{\"VendorID\":\(profile.vendorId),\"ProductID\":\(profile.productId),\"PrimaryUsagePage\":\(group.page),\"PrimaryUsage\":\(group.usage)}"
                 let current = try read(matching)
@@ -26,11 +29,20 @@ final class MappingLease {
                 try persist()
                 let mappings = current.filter { !owned.contains($0.source) } + owned.sorted().map { Mapping(source: $0, destination: 0x0000_0007_0000_0000) }
                 try write(matching, mappings)
+                if testMode {
+                    try Self.verifyTestMappings(try read(matching),sources:owned)
+                }
             }
         } catch {
             try? restore()
             throw error
         }
+    }
+    static func verifyTestMappings(_ mappings:[Mapping],sources:Set<UInt64>) throws {
+        guard !sources.isEmpty,sources.allSatisfy({ source in
+            let entries=mappings.filter { $0.source == source }
+            return entries.count == 1 && entries[0].destination == 0x0000_0007_0000_0000
+        }) else { throw JustVibeRemoteError.message("macOS did not confirm that receiver button actions are blocked for testing.") }
     }
     func restore() throws {
         for index in leases.indices.reversed() {

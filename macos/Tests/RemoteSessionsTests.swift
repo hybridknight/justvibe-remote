@@ -272,11 +272,13 @@ import UniformTypeIdentifiers
         check(resolved.bindingSets[newPair] == newerBindings && resolved.appMappings[newPair]?.shortcut == "CMD+D" && resolved.bindings == newerBindings && resolved.shortcut == "CMD+D","existing ChatGPT settings win namespace collisions, including the active profile")
         try namespaceStore.save(migrated)
         check(!String(data:try Data(contentsOf:namespaceStore.url),encoding:.utf8)!.contains(legacyAppID),"the next save uses only canonical plugin namespaces")
-        check(ButtonTestState.shouldEnable(buttonsPageVisible:true,appActive:true,windowVisible:true,windowMiniaturized:false),"focused Buttons page enables test capture")
-        check(!ButtonTestState.shouldEnable(buttonsPageVisible:true,appActive:false,windowVisible:true,windowMiniaturized:false),"switching to a target app releases test capture even with Buttons still open")
-        check(!ButtonTestState.shouldEnable(buttonsPageVisible:false,appActive:true,windowVisible:true,windowMiniaturized:false),"other JustVibe Remote pages never enable test capture")
-        check(!ButtonTestState.shouldEnable(buttonsPageVisible:true,appActive:true,windowVisible:false,windowMiniaturized:false),"hiding the editor restores normal remote actions")
-        check(!ButtonTestState.shouldEnable(buttonsPageVisible:true,appActive:true,windowVisible:true,windowMiniaturized:true),"minimizing the editor restores normal remote actions")
+        check(ButtonTestState.shouldEnable(page:.buttonTest,workspaceOpen:true,appActive:true,windowVisible:true,windowMiniaturized:false),"focused Button test page enables test capture")
+        check(!ButtonTestState.shouldEnable(page:.buttonTest,workspaceOpen:true,appActive:false,windowVisible:true,windowMiniaturized:false),"switching to a target app releases test capture even with Button test still open")
+        check(!ButtonTestState.shouldEnable(page:.buttons,workspaceOpen:true,appActive:true,windowVisible:true,windowMiniaturized:false),"other JustVibe Remote pages never enable test capture")
+        check(!ButtonTestState.shouldEnable(page:.buttonTest,workspaceOpen:false,appActive:true,windowVisible:true,windowMiniaturized:false),"button testing cannot capture a remote outside its workspace")
+        check(WorkspacePage.buttonTest.isRemoteScoped && !WorkspacePage.buttonTest.isSidebarPage && WorkspacePage.buttons.isSidebarPage,"button testing is a nested remote page reached from Buttons")
+        check(!ButtonTestState.shouldEnable(page:.buttonTest,workspaceOpen:true,appActive:true,windowVisible:false,windowMiniaturized:false),"hiding the editor restores normal remote actions")
+        check(!ButtonTestState.shouldEnable(page:.buttonTest,workspaceOpen:true,appActive:true,windowVisible:true,windowMiniaturized:true),"minimizing the editor restores normal remote actions")
         var voiceRouting=try PluginSelection.select(first.config,catalog:workspace.catalog,deviceID:firstID,appID:"org.justviberemote.app.chatgpt")
         voiceRouting.followActiveApp=true;voiceRouting.shortcut="CTRL+SHIFT+D";voiceRouting.shortcutConfirmed=true;voiceRouting.targetAppPath=""
         if let mic=voiceRouting.bindings.firstIndex(where:{$0.controlID == "microphone"}) {
@@ -298,6 +300,18 @@ import UniformTypeIdentifiers
         check(sharedAntiRoute?.shortcut == "CTRL+M" && sharedAntiRoute?.bindings.first(where:{$0.controlID == "microphone"})?.action == .dictate,"Antigravity mic dictation automatically works while shared controls are selected in the editor")
         check(sharedEditor.appPluginID == Configuration.noSpecificAppID && sharedEditor.shortcut.isEmpty,"detecting target apps does not overwrite shared editor settings")
         check(AppRouting.resolve(sharedEditor,apps:workspace.catalog.apps,foreground:ForegroundApp(bundleID:"other",name:"Other"))?.appPluginID == Configuration.noSpecificAppID,"switching from dictation apps to another app uses shared controls")
+        let testingCanvas=RemoteCanvas(frame:NSRect(x:0,y:0,width:300,height:600))
+        testingCanvas.testing=true
+        let beforeTestSelection=first.config.bindings
+        let layoutControl=first.remoteLayout.buttons.first!
+        testingCanvas.update(layout:first.remoteLayout,bindings:first.config.bindings,selection:nil,active:[])
+        var selectedTestControl:String?
+        testingCanvas.selected={ selectedTestControl=$0 }
+        let testControl=testingCanvas.subviews.compactMap { $0 as? NSButton }.first { $0.accessibilityLabel() == layoutControl.label }!
+        check(testControl.isEnabled,"test artwork lets an unlinked physical control be selected")
+        testControl.performClick(nil)
+        check(selectedTestControl == layoutControl.id,"test artwork selection uses the same stable control ID as button configuration")
+        check(first.config.bindings == beforeTestSelection,"selecting a test drawing alone cannot change saved signals or app actions")
         var testState=ButtonTestState()
         let tested=Usage(page:12,code:0xCF),another=Usage(page:7,code:40)
         testState.observe(tested,down:true,now:10)
@@ -333,6 +347,27 @@ import UniformTypeIdentifiers
             _=try ButtonTestCapture.transition(enabled:false) { exclusive in captureAttempts.append(exclusive);throw CaptureFailure.normal }
             check(false,"failed normal capture must propagate")
         } catch { check(captureAttempts == [false],"leaving test mode never retries exclusive capture") }
+        captureAttempts=[]
+        var isolationCalls=0
+        check(try ButtonTestCapture.transition(enabled:true,isolate:{ isolationCalls+=1 },reopen:{ exclusive in
+            captureAttempts.append(exclusive)
+            if exclusive { throw CaptureFailure.exclusive }
+        }) == nil,"verified device mappings enable testing when exclusive access is refused")
+        check(captureAttempts == [true,false] && isolationCalls == 1,"fallback opens shared input before isolating only the receiver")
+        do {
+            _=try ButtonTestCapture.transition(enabled:true,isolate:{ throw CaptureFailure.normal },reopen:{ if $0 { throw CaptureFailure.exclusive } })
+            check(false,"failed isolation must not enable testing")
+        } catch { check(true,"isolation failure is propagated instead of reporting safe test capture") }
+        _=try ButtonTestCapture.transition(enabled:true,isolate:{ isolationCalls+=1 },reopen:{ _ in })
+        _=try ButtonTestCapture.transition(enabled:false,isolate:{ isolationCalls+=1 },reopen:{ _ in })
+        check(isolationCalls == 1,"exclusive tests and leaving test mode do not acquire fallback mappings")
+        let muted=MappingLease.Mapping(source:tested.hidutilCode,destination:0x0000_0007_0000_0000)
+        try MappingLease.verifyTestMappings([muted,.init(source:another.hidutilCode,destination:123)],sources:[tested.hidutilCode])
+        check(true,"test mapping verification permits unrelated existing mappings")
+        for values:[MappingLease.Mapping] in [[],[.init(source:tested.hidutilCode,destination:123)],[muted,muted]] {
+            do { try MappingLease.verifyTestMappings(values,sources:[tested.hidutilCode]);check(false,"unverified native suppression was accepted") }
+            catch { check(true,"missing, changed, or ambiguous test mappings are rejected") }
+        }
         let beforeSystem=first.config
         var universalSetting=SystemDictationSettings();universalSetting.mode = .fallback
         universalSetting.shortcut="CTRL+SHIFT+D";universalSetting.confirmed=true
@@ -354,7 +389,7 @@ import UniformTypeIdentifiers
         check(first.buttonTestMode && !second.buttonTestMode,"test mode applies only to the selected remote")
         check(!first.running,"opening test mode never connects hardware without user action")
         first.testVoice()
-        check(!first.voiceActive && first.status.contains("Leave the Buttons page"),"test mode blocks the dictation test command")
+        check(!first.voiceActive && first.status.contains("Leave the Button test page"),"test mode blocks the dictation test command")
         first.setButtonTestMode(false)
         check(!first.buttonTestMode,"leaving the Buttons page restores normal controller mode")
         check(try Data(contentsOf:first.store.url) == savedBeforeTest,"test mode never writes temporary state into saved mappings")
