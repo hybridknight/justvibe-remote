@@ -2,6 +2,8 @@
   <PropertyGroup>
     <OutputType>WinExe</OutputType><TargetFramework>net10.0-windows</TargetFramework>
     <UseWindowsForms>true</UseWindowsForms><EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <CopyOutputSymbolsToPublishDirectory>false</CopyOutputSymbolsToPublishDirectory>
     <ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable>
     <Version>0.9.4</Version><AssemblyName>JustVibeRemote</AssemblyName><ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyTitle>JustVibe Remote</AssemblyTitle>
@@ -12,12 +14,16 @@
   <ItemGroup>
     <EmbeddedResource Include="../../assets/branding/JustVibeRemote.png" LogicalName="JustVibeRemote.Branding.png" />
     <EmbeddedResource Include="../../assets/branding/JustVibeRemote.ico" LogicalName="JustVibeRemote.Branding.ico" />
+    <EmbeddedResource Include="../../assets/help/windows/sound-input.png" LogicalName="JustVibeRemote.Help.WindowsSoundInput.png" />
   </ItemGroup>
   <ItemGroup><Content Include="../../plugins/bundled/**/plugin.json" Link="plugins/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" /></ItemGroup>
   <ItemGroup>
-    <Content Include="../../assets/fonts/windows/*.ttf" Link="Fonts/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="../../assets/fonts/*-OFL.txt" Link="Fonts/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="../../plugins/examples/device/**" Link="PluginAuthoring/device/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="../../docs/PLUGIN-AUTHORING.md;../../docs/PLUGINS.md;../../docs/IMAGE-TO-PLUGIN.md" Link="PluginAuthoring/guides/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
+  <Target Name="ExcludePublishedDebugSymbols" AfterTargets="ComputeFilesToPublish">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(ResolvedFileToPublish.Extension)' == '.pdb'" />
+    </ItemGroup>
+  </Target>
 </Project>

@@ -33,7 +33,7 @@ internal sealed class RemoteController
     public int? MicrophoneIndex { get { int index=Config.Bindings.FindIndex(b=>b.ControlID=="microphone"||b.Action==ActionKind.Dictate);return index<0?null:index; } }
     public SetupProgress SetupProgress => new(true,true,Running&&Connected>0,AppPlugin?.App?.Supports(ActionKind.Dictate)==true,MicrophoneIndex is int index&&Config.Bindings[index].Usage!=null&&Config.Bindings[index].Action==ActionKind.Dictate,Config.ShortcutConfirmed,Config.DictationTested);
     public void ResumeIfConfigured(){if(Config.AutoConnect)Start();}
-    public void ShowTargetApp(){try{var display=new TargetOutput{Plugin=Catalog.Find(Config.AppPluginID,"app").App};display.Show(Config);}catch(Exception error){Status=error.Message;Changed?.Invoke();}}
+    public void ShowTargetApp(){try{if(Config.AppPluginID==Configuration.NoSpecificAppID){Status="Switch to the app where you want to use your shared controls.";Changed?.Invoke();return;}var display=new TargetOutput{Plugin=Catalog.Find(Config.AppPluginID,"app").App};display.Show(Config);}catch(Exception error){Status=error.Message;Changed?.Invoke();}}
     private Usage? repeatUsage;
     private Configuration? repeatRoute;
     private DateTime repeatAfter;
@@ -58,9 +58,10 @@ internal sealed class RemoteController
         FinishVoice();
         if(output.HasHeldKeys){routedConfig=null;return;}
         routeKey=key;routedConfig=next;output.Plugin=next==null?null:next.AppPluginID==Configuration.NoSpecificAppID?SharedActions.Plugin:Catalog.Find(next.AppPluginID,"app").App;
-        RoutingLabel=Config.FollowActiveApp?next==null?"Active app: original remote actions":"Active mapping: "+Catalog.Find(next.AppPluginID,"app").Name:"Using selected app";
+        RoutingLabel=DescribeRoute(Config.FollowActiveApp,next,Catalog);
         Changed?.Invoke();
     }
+    internal static string DescribeRoute(bool follow,Configuration? route,PluginCatalog catalog)=>!follow?"Using selected app":route==null?"Active app: original remote actions":route.AppPluginID==Configuration.NoSpecificAppID?"Active mapping: shared controls":"Active mapping: "+catalog.Find(route.AppPluginID,"app").Name;
     public RemoteController(ConfigurationStore? store=null,Configuration? initial=null,string? pluginDirectory=null)
     {
         Store=store??new(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),"JustVibeRemote","settings.json"));
@@ -127,7 +128,7 @@ internal sealed class RemoteController
         configuration.Validate();
         Catalog.Find(configuration.DevicePluginID, "device");
         var app = configuration.AppPluginID==Configuration.NoSpecificAppID?null:Catalog.Find(configuration.AppPluginID, "app").App;
-        if (app?.Supports(ActionKind.Dictate)==true) TargetOutput.ParseShortcut(configuration.Shortcut);
+        if (app?.Supports(ActionKind.Dictate)==true&&(configuration.ShortcutConfirmed||!string.IsNullOrWhiteSpace(configuration.Shortcut))) TargetOutput.ParseShortcut(configuration.Shortcut);
         bool restart = Running;
         Stop(); Store.Save(configuration); Config = configuration;
         if (restart) Start();
@@ -184,7 +185,7 @@ internal sealed class RemoteController
                 Store.Save(next); Config = next; learning = null; SynchronizeRoute(true);
                 Status = $"Learned {Config.Bindings[index].Name}: {usage}"; Changed?.Invoke(); return;
             }
-            if(MicrophoneTesting||ButtonTesting||MaySendOutput?.Invoke()==false)return;
+            if(MicrophoneTesting||ButtonTesting||MaySendOutput?.Invoke()==false||repeatedDown)return;
             SynchronizeRoute();
             var route=routedConfig;
             var source=Config.Bindings.FirstOrDefault(binding=>binding.Usage==usage);
@@ -248,9 +249,10 @@ internal sealed class RemoteController
     public void Dispose(){Stop();timer.Dispose();repeatTimer.Dispose();}
     private void FinishVoice()
     {
+        bool wasActive=VoiceActive;
         repeatTimer.Stop();repeatUsage=null;
         voiceStart.Cancel();
-        try { output.Release(); voice.Commit(false, DateTimeOffset.UtcNow);ReleaseVoice?.Invoke();Status = "Dictation shortcut released"; }
+        try { output.Release(); voice.Commit(false, DateTimeOffset.UtcNow);ReleaseVoice?.Invoke();if(wasActive)Status = "Dictation shortcut released"; }
         catch (Exception error) { Status = error.Message; }
         Changed?.Invoke();
     }

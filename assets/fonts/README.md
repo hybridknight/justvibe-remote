@@ -28,14 +28,18 @@ SHA-256:
 - `Manrope.ttf`: `3ae11c49db0455a3cc33e37d380f20fdb8c7f8b41dc07625c177e3d87a9d6ae6`
 - `Inter.ttf`: `29160a80ff49ddcab2c97711247e08b1fab27a484a329ce8b813d820dc559031`
 
-## Windows static faces
+## Windows typography
 
-Windows Forms uses static derivatives in `windows/`, generated from the same
-variable sources with fontTools 4.68.0 using `scripts/generate-windows-fonts.py`.
-Manrope uses weight 700; Inter uses 400 and 600 at optical size 14. The derived
-family names are `JustVibe Manrope` and `JustVibe Inter`. Both original license
-files accompany published Windows builds. Fonts are registered privately in the
-application process with GDI and GDI+; no system font installation is required.
+Windows uses the native **Segoe UI** family for controls and body text, with
+**Segoe UI Semibold** for headings and emphasis. Labels and custom controls use
+the Windows GDI text renderer for consistent metrics and small-size rendering.
+Text follows the user's Windows font-smoothing settings; the app does not change
+system preferences. Per-monitor DPI awareness is configured in both the manifest
+and Windows Forms startup.
+
+The static Manrope/Inter derivatives in `windows/` are retained as design assets
+but are no longer loaded or distributed by the Windows app. They were generated
+with `scripts/generate-windows-fonts.py`; their original license files remain here.
 
 Windows uses the same logical spacing scale (4/8/12/16/24/28) with native DPI
 scaling. Point sizes account for Windows' 96-DPI UI conventions.

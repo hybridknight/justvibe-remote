@@ -5,7 +5,8 @@ namespace JustVibeRemote;
 
 internal static class Palette
 {
-    public static readonly Color Accent=Color.FromArgb(87,92,232), Ink=Color.FromArgb(31,39,56), Muted=Color.FromArgb(110,120,140), Background=Color.FromArgb(243,245,250), Teal=Color.FromArgb(25,156,146);
+    public static readonly Color Accent=Color.FromArgb(92,82,224), Ink=Color.FromArgb(36,41,59), Muted=Color.FromArgb(102,112,135), Background=Color.FromArgb(246,247,250), Teal=Color.FromArgb(15,127,108), Sidebar=Color.FromArgb(241,237,250), Border=Color.FromArgb(224,227,237);
+    public static readonly Color AccentHover=Color.FromArgb(81,70,209),AccentPressed=Color.FromArgb(69,58,187),InputBorder=Color.FromArgb(203,209,222),BorderHover=Color.FromArgb(166,175,195),FieldDisabled=Color.FromArgb(242,244,248);
     public static GraphicsPath Round(RectangleF r,float radius)
     {
         float d=Math.Min(radius*2,Math.Min(r.Width,r.Height));var path=new GraphicsPath();
@@ -17,6 +18,11 @@ internal sealed class RemoteCanvas : Panel
     private RemoteLayout? model;
     private readonly List<RemoteGraphicButton> buttons=[];
     private readonly ToolTip hints=new();
+    internal Action<Graphics>? ConnectionPainter;
+    internal Point? CenterOf(string id)
+    {
+        var button=buttons.FirstOrDefault(button=>button.Control.Id==id);return button==null?null:new Point(button.Left+button.Width/2,button.Top+button.Height/2);
+    }
     public event Action<string>? Selected;
     public RemoteCanvas() { DoubleBuffered=true;BackColor=Color.White; }
     public void UpdateRemote(RemoteLayout layout,List<JustVibeRemote.Core.Binding> bindings,string? selected,HashSet<Usage> active)
@@ -51,7 +57,11 @@ internal sealed class RemoteCanvas : Panel
     }
     protected override void OnPaint(PaintEventArgs e)
     {
-        base.OnPaint(e);if(model==null)return;var g=e.Graphics;g.SmoothingMode=SmoothingMode.AntiAlias;var state=g.Save();var(s,x,y)=Transform();g.TranslateTransform(x,y);g.ScaleTransform(s,s);
+        PaintSurface(e.Graphics);
+    }
+    internal void PaintSurface(Graphics g)
+    {
+        WorkspaceStyle.FillBackground(g,BackColor,ClientRectangle);if(model==null)return;g.SmoothingMode=SmoothingMode.AntiAlias;var state=g.Save();var(s,x,y)=Transform();g.TranslateTransform(x,y);g.ScaleTransform(s,s);
         var rect=new RectangleF(0,0,(float)model.Width,(float)model.Height);
         using(var shadow=Palette.Round(new RectangleF(5,9,rect.Width,rect.Height),18))using(var fill=new SolidBrush(Color.FromArgb(15,20,30,45)))g.FillPath(fill,shadow);
         using(var body=Palette.Round(rect,18))using(var metal=new LinearGradientBrush(rect,Color.Gray,Color.Silver,0f))
@@ -65,12 +75,18 @@ internal sealed class RemoteCanvas : Panel
             var ring=new RectangleF((float)(d.X-d.Radius),(float)(d.Y-d.Radius),(float)d.Radius*2,(float)d.Radius*2);
             using var fill=new LinearGradientBrush(ring,Color.FromArgb(65,67,73),Color.FromArgb(38,40,46),90f);g.FillEllipse(fill,ring);using var pen=new Pen(Color.FromArgb(20,22,26),2);g.DrawEllipse(pen,ring);
         }
-        using(var font=new Font(WorkspaceStyle.Text(9,true),FontStyle.Bold))using(var ink=new SolidBrush(Color.FromArgb(80,30,35,40)))using(var format=new StringFormat{Alignment=StringAlignment.Center})g.DrawString("R E M O T E V I B E",font,ink,new RectangleF(0,rect.Height-65,rect.Width,30),format);
+        using(var ink=new SolidBrush(Color.FromArgb(80,30,35,40)))using(var format=new StringFormat{Alignment=StringAlignment.Center})
+        {
+            // This marking is part of the scaled illustration, not a UI label.
+            g.TextRenderingHint=System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
+            g.DrawString("R E M O T E V I B E",WorkspaceStyle.Text(9,true),ink,new RectangleF(0,rect.Height-65,rect.Width,30),format);
+        }
         g.Restore(state);
+        ConnectionPainter?.Invoke(g);
     }
     protected override void Dispose(bool disposing){if(disposing)hints.Dispose();base.Dispose(disposing);}
 }
-internal sealed class RemoteGraphicButton : Button
+internal sealed class RemoteGraphicButton : PaintedButton
 {
     public LayoutControl Control{get;}
     [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
@@ -82,9 +98,19 @@ internal sealed class RemoteGraphicButton : Button
     private bool hovered;
     public RemoteGraphicButton(LayoutControl control)
     {
-        Control=control;FlatStyle=FlatStyle.Flat;FlatAppearance.BorderSize=0;BackColor=Color.Transparent;AccessibleName=control.Label;AccessibleDescription="Select this physical button to learn its signal and change its action.";
-        SetStyle(ControlStyles.SupportsTransparentBackColor|ControlStyles.UserPaint|ControlStyles.OptimizedDoubleBuffer,true);
+        Control=control;BackColor=Color.Transparent;AccessibleName=control.Label;AccessibleDescription="Select this physical button to learn its signal and change its action.";
+        SetStyle(ControlStyles.SupportsTransparentBackColor|ControlStyles.UserPaint|ControlStyles.AllPaintingInWmPaint|ControlStyles.OptimizedDoubleBuffer,true);
         MouseEnter+=(_,_)=>{hovered=true;Invalidate();};MouseLeave+=(_,_)=>{hovered=false;Invalidate();};
+    }
+    protected override void OnPaintBackground(PaintEventArgs e)
+    {
+        // ButtonBase paints a themed button (including text) here even when
+        // OnPaint is overridden. Repaint only the remote beneath this control.
+        if(Parent is RemoteCanvas canvas)
+        {
+            var state=e.Graphics.Save();e.Graphics.TranslateTransform(-Left,-Top);canvas.PaintSurface(e.Graphics);e.Graphics.Restore(state);
+        }
+        else WorkspaceStyle.FillBackground(e.Graphics,Palette.Background,ClientRectangle);
     }
     protected override void OnPaint(PaintEventArgs e)
     {
@@ -110,7 +136,7 @@ internal sealed class RemoteGraphicButton : Button
         else
         {
             string text=Control.Text??Control.Icon switch{"mode"=>"◎","ok"=>"OK","home-back"=>"⌂↶","home"=>"⌂","back"=>"↶","volume-up"=>"V +","volume-down"=>"V −","page-up"=>"PG +","page-down"=>"PG −","apps"=>"Apps",_=>Control.Label};
-            float size=Control.Shape=="pill"?Math.Clamp(r.Width/7,7,11):Math.Clamp(r.Width/4,8,14);var font=WorkspaceStyle.Text(size,true,false,GraphicsUnit.Pixel);using var format=new StringFormat{Alignment=StringAlignment.Center,LineAlignment=StringAlignment.Center};g.DrawString(text,font,ink,r,format);
+            float size=Control.Shape=="pill"?Math.Clamp(r.Width/7,7,11):Math.Clamp(r.Width/4,8,14);var font=WorkspaceStyle.Text(size,true,false,GraphicsUnit.Pixel);WorkspaceStyle.DrawText(g,text,font,Rectangle.Round(r),color,TextFormatFlags.HorizontalCenter|TextFormatFlags.VerticalCenter|TextFormatFlags.SingleLine|TextFormatFlags.NoPadding);
         }
         if(Learned&&!Chosen&&Control.Shape!="segment"){using var dot=new SolidBrush(Palette.Teal);g.FillEllipse(dot,r.Right-6,r.Bottom-6,4,4);}
     }

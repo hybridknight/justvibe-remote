@@ -18,14 +18,17 @@ internal sealed partial class MainWindow
         var content=new TableLayoutPanel{Dock=DockStyle.Fill,RowCount=3,ColumnCount=1,Padding=new Padding(28,24,28,16),Margin=Padding.Empty,BackColor=Palette.Background};content.RowStyles.Add(new(SizeType.Absolute,88));content.RowStyles.Add(new(SizeType.Percent,100));content.RowStyles.Add(new(SizeType.Absolute,44));shell.Controls.Add(content,1,0);
         var heading=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=2,Margin=Padding.Empty};heading.ColumnStyles.Add(new(SizeType.Percent,100));heading.ColumnStyles.Add(new(SizeType.AutoSize));
         var titles=Stack();titles.Controls.Add(pageTitle);titles.Controls.Add(pageSubtitle);heading.Controls.Add(titles,0,0);
-        stopVoice=Button("Stop voice",sessions.StopVoices);stopVoice.Visible=false;heading.Controls.Add(stopVoice,1,0);content.Controls.Add(heading,0,0);
+        connect=Button("Connect remote",Connect,true);stopVoice=Button("Stop voice",sessions.StopVoices);stopVoice.Visible=false;badge.Margin=new Padding(0,10,16,0);var connectionTools=(FlowLayoutPanel)Row(badge,connect,stopVoice);connectionTools.WrapContents=false;connectionTools.MaximumSize=Size.Empty;heading.Controls.Add(connectionTools,1,0);content.Controls.Add(heading,0,0);
         content.Controls.Add(pageHost,0,1);status.Dock=DockStyle.Fill;status.AutoSize=false;status.MaximumSize=Size.Empty;content.Controls.Add(status,0,2);
-        connect=Button("Connect remote",Connect,true);buttonsPage=BuildButtonsPage();BuildNavigation();
+        buttonsPage=BuildButtonsPage();BuildNavigation();
     }
     private void BuildNavigation()
     {
         foreach(Control item in navigation.Controls.Cast<Control>().ToArray())item.Dispose();navigation.Controls.Clear();navigationButtons.Clear();
-        navigation.Controls.Add(WorkspaceStyle.Label("JustVibe",17,true,true,210));navigation.Controls.Add(WorkspaceStyle.Label("Remote",9,false,false,210));
+        var identity=new FlowLayoutPanel{AutoSize=true,WrapContents=false,Margin=new Padding(0,8,0,14),BackColor=Color.Transparent};
+        var mark=new PictureBox{Size=new Size(44,44),SizeMode=PictureBoxSizeMode.Zoom,Margin=new Padding(0,0,12,0)};
+        using(var stream=typeof(MainWindow).Assembly.GetManifestResourceStream("JustVibeRemote.Branding.png")){if(stream!=null){using var image=Image.FromStream(stream);mark.Image=new Bitmap(image);}}mark.Disposed+=(_,_)=>mark.Image?.Dispose();
+        var wordmark=WorkspaceStyle.Stack(140);wordmark.Controls.Add(WorkspaceStyle.Label("JustVibe",17,true,true,140));wordmark.Controls.Add(WorkspaceStyle.Label("Remote",9,false,false,140));identity.Controls.Add(mark);identity.Controls.Add(wordmark);navigation.Controls.Add(identity);
         void Group(string title){var label=WorkspaceStyle.Label(title,8.5f,true,false,210);label.Margin=new Padding(12,24,0,12);navigation.Controls.Add(label);}
         void Item(WorkspacePage page,string? title=null){var button=new NavigationButton(title??Title(page),(int)page,()=>ShowPage(page));navigationButtons[page]=button;navigation.Controls.Add(button);}
         Group("Library");Item(WorkspacePage.Remotes);Item(WorkspacePage.Plugins);
@@ -50,11 +53,11 @@ internal sealed partial class MainWindow
     }
     private FlowLayoutPanel Page(params Control[] controls)
     {
-        var page=new FlowLayoutPanel{Dock=DockStyle.Fill,FlowDirection=FlowDirection.TopDown,WrapContents=false,AutoScroll=true,BackColor=Palette.Background,Margin=Padding.Empty};page.Controls.AddRange(controls);return page;
+        var page=new WorkspacePagePanel();page.Controls.AddRange(controls);return page;
     }
     private Panel ContentCard(string title,string detail,params Control[] controls)
     {
-        var list=new List<Control>{WorkspaceStyle.Label(title,12.5f,true,true),WorkspaceStyle.Label(detail)};list.AddRange(controls);return WorkspaceStyle.Card(list.ToArray());
+        var list=new List<Control>{WorkspaceStyle.Label(title,12.5f,true,true)};if(!string.IsNullOrWhiteSpace(detail))list.Add(WorkspaceStyle.Label(detail));list.AddRange(controls);return WorkspaceStyle.Card(list.ToArray());
     }
     private Control BuildRemotesPage()
     {
@@ -64,7 +67,11 @@ internal sealed partial class MainWindow
         {
             var session=sessions.Controllers[device.Id];var state=MakeLabel("",10);states.Add((state,session));
             var details=WorkspaceStyle.Stack(500);details.Controls.Add(WorkspaceStyle.Label(device.Name,17,true,true,500));details.Controls.Add(WorkspaceStyle.Label("Independent app profiles, buttons, and microphone choice.",10,false,false,500));details.Controls.Add(state);
-            details.Controls.Add(Row(Button(session.Config.RemoteSetupCompleted?"Open remote →":"Set up remote →",()=>{SelectRemote(device.Id);if(!session.Config.RemoteSetupCompleted)OpenQuickSetup();},true),Button("Connect / disconnect",()=>Try(()=>{if(session.Running)session.Stop();else session.Start();}))));
+            var connection=Button(session.Running?"Disconnect":"Connect",()=>Try(()=>{if(session.Running)session.Stop();else session.Start();}));
+            details.Controls.Add(Row(Button(session.Config.RemoteSetupCompleted?"Open remote":"Set up remote",()=>{SelectRemote(device.Id);if(!session.Config.RemoteSetupCompleted)OpenQuickSetup();},true),connection));
+            session.Changed+=RefreshConnection;
+            void RefreshConnection(){if(!connection.IsDisposed)connection.Text=session.Running?"Disconnect":"Connect";}
+            connection.Disposed+=(_,_)=>session.Changed-=RefreshConnection;
             page.Controls.Add(WorkspaceStyle.Card(Row(ArtworkView(session),details)));
         }
         page.Controls.Add(ContentCard("Add another remote","Pair it in Windows or plug in its USB receiver first.",Button("Add a remote…",AddRemote)));
@@ -72,32 +79,68 @@ internal sealed partial class MainWindow
     }
     private Control BuildOverviewPage()
     {
-        var health=MakeLabel("",10);refreshPage=()=>health.Text=$"Connection: {(controller.Connected>0?"Connected":"Not connected")}\nApp profile: {controller.AppPlugin?.Name??"No specific app"}\n{controller.MicrophoneSummary}";
-        return Page(ContentCard(controller.Config.RemoteSetupCompleted?"Make every button yours":"Your next step","Set up this remote, then choose its apps and button actions.",Row(ArtworkView(controller),Button(controller.Config.RemoteSetupCompleted?"Review settings":"Continue setup",OpenQuickSetup,true))),ContentCard("This remote","",health),ContentCard("Configure this remote","Changes apply to this receiver.",Row(Button("Apps",()=>ShowPage(WorkspacePage.Apps)),Button("Buttons",()=>ShowPage(WorkspacePage.Buttons)),Button("Microphone",()=>ShowPage(WorkspacePage.Microphone)))));
+        var health=MakeLabel("",10);refreshPage=()=>{int count=controller.Config.Bindings.Count(b=>b.Usage!=null);health.Text=$"{(controller.Connected>0?"Receiver connected":controller.Running?"Waiting for receiver":"Receiver disconnected")}   ·   {count} / {controller.Config.Bindings.Count} buttons linked\nEditing: {controller.AppPlugin?.Name??"No specific app"}\n{controller.RoutingLabel}";};
+        var details=Stack();details.Controls.Add(WorkspaceStyle.Label(controller.DevicePlugin?.Name??"Your remote",18,true,true));details.Controls.Add(health);details.Controls.Add(Row(Button("Configure buttons",()=>ShowPage(WorkspacePage.Buttons),true),Button(controller.Config.RemoteSetupCompleted?"Setup guide":"Continue setup",OpenQuickSetup)));
+        return Page(WorkspaceStyle.Card(Row(ArtworkView(controller),details)),ContentCard("Personalize your remote","Choose an app profile, link the controls you need, and test your changes.",Row(Button("App profiles",()=>ShowPage(WorkspacePage.Apps)),Button("Edit buttons",()=>ShowPage(WorkspacePage.Buttons)),Button("Button test",()=>ShowPage(WorkspacePage.ButtonTest)))) ,ContentCard("Voice input",controller.MicrophoneSummary,Button("Microphone & voice",()=>ShowPage(WorkspacePage.Microphone))));
     }
     private Control BuildButtonsPage()
     {
-        var root=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=1,RowCount=2,Margin=Padding.Empty};root.RowStyles.Add(new(SizeType.Absolute,64));root.RowStyles.Add(new(SizeType.Percent,100));
-        root.Controls.Add(Row(MakeLabel("Edit app",9,true),apps,Button("Add app…",AddApplication),Button("Button test…",()=>ShowPage(WorkspacePage.ButtonTest))),0,0);
-        var columns=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=2,Margin=Padding.Empty};columns.ColumnStyles.Add(new(SizeType.Percent,40));columns.ColumnStyles.Add(new(SizeType.Percent,60));root.Controls.Add(columns,0,1);
-        var remote=Card();remote.Margin=new Padding(0,0,12,0);remote.Controls.Add(canvas);progress.Dock=DockStyle.Bottom;progress.Height=36;progress.AutoSize=false;remote.Controls.Add(progress);columns.Controls.Add(remote,0,0);canvas.Selected+=SelectControl;
-        var inspector=Card();var form=Stack();form.Dock=DockStyle.Fill;form.AutoSize=false;form.AutoScroll=true;form.Padding=new Padding(24);form.BackColor=Color.White;inspector.Controls.Add(form);columns.Controls.Add(inspector,1,0);
-        form.Controls.Add(MakeLabel("REMOTE BUTTON",9,true));form.Controls.Add(bindingPicker);form.Controls.Add(selectedName);form.Controls.Add(linked);form.Controls.Add(hint);
-        learn=Button("Link this button",Learn,true);cancel=Button("Cancel",()=>controller.CancelLearning());cancel.Visible=false;form.Controls.Add(Row(learn,cancel));form.Controls.Add(learningHelp);form.Controls.Add(actionContext);form.Controls.Add(actionPicker);launchAppButton=Button("Choose apps…",ChooseLaunchApp);form.Controls.Add(launchAppButton);form.Controls.Add(actionHelp);form.Controls.Add(Button("Apply to all apps",()=>Try(()=>controller.ApplyActionToAllApps(selectedIndex))));
-        voice.Controls.Add(Section("Voice setup"));voice.Controls.Add(Button("Test microphone…",TestMicrophone));voice.Controls.Add(microphoneStatus);voice.Controls.Add(Block("Match the shortcut configured in the selected app. Double-click the shortcut field to record it, or type it."));voice.Controls.Add(shortcut);voice.Controls.Add(Button("Save voice settings",SaveVoice));voice.Controls.Add(confirmed);voice.Controls.Add(toggle);voice.Controls.Add(Row(Button("Try dictation",TryVoice),Button("Locate app…",ChooseTarget)));form.Controls.Add(voice);
-        form.Controls.Add(target);form.Controls.Add(Button("Advanced & app connection",()=>advanced.Visible=!advanced.Visible));advanced.Controls.Add(signal);advanced.Controls.Add(Block("Windows keeps native remote actions. Mapped actions run alongside them. Native typing is not suppressed."));advanced.Visible=false;form.Controls.Add(advanced);
-        form.SizeChanged+=(_,_)=>{var width=Math.Max(120,form.ClientSize.Width-64);bindingPicker.Width=actionPicker.Width=width;shortcut.Width=Math.Min(320,width);foreach(var label in new[]{hint,learningHelp,actionHelp,target,signal,microphoneStatus})label.MaximumSize=new Size(width,0);voice.Width=width;voice.MaximumSize=new Size(width,0);};WorkspaceStyle.Apply(root);return root;
+        var root=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=1,RowCount=3,Margin=Padding.Empty};root.RowStyles.Add(new(SizeType.Absolute,116));root.RowStyles.Add(new(SizeType.Percent,100));root.RowStyles.Add(new(SizeType.Absolute,44));
+        var intro=new TableLayoutPanel{Dock=DockStyle.Fill,RowCount=2,ColumnCount=2,Margin=Padding.Empty};intro.ColumnStyles.Add(new(SizeType.Percent,100));intro.ColumnStyles.Add(new(SizeType.AutoSize));intro.RowStyles.Add(new(SizeType.Absolute,88));intro.RowStyles.Add(new(SizeType.Absolute,28));
+        appProfiles=new AppProfileSelector{Dock=DockStyle.Fill};appProfiles.Selected+=id=>{var choices=(List<PluginManifest>)apps.DataSource!;apps.SelectedItem=choices.First(app=>app.Id==id);};intro.Controls.Add(appProfiles,0,0);intro.SetColumnSpan(appProfiles,2);
+        intro.Controls.Add(MakeLabel("Link your remote’s buttons and choose their actions.",9),0,1);progress.Margin=Padding.Empty;intro.Controls.Add(progress,1,1);root.Controls.Add(intro,0,0);
+        var columns=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=2,Margin=Padding.Empty};columns.ColumnStyles.Add(new(SizeType.Percent,100));columns.ColumnStyles.Add(new(SizeType.Absolute,270));root.Controls.Add(columns,0,1);
+        mappingBoard=new RemoteMappingBoard(canvas){Dock=DockStyle.Fill,Margin=Padding.Empty};mappingBoard.Selected+=SelectControl;mappingBoard.Assigned+=(id,action)=>{SelectControl(id);AssignSelectedAction(action);};mappingBoard.Learn+=id=>{SelectControl(id);Learn();};mappingBoard.CancelLearning+=()=>controller.CancelLearning();canvas.Selected+=SelectControl;columns.Controls.Add(mappingBoard,0,0);
+        var inspector=Card();inspector.Margin=new Padding(20,12,0,0);var form=new EditorPanel{Dock=DockStyle.Fill,Padding=new Padding(16),BackColor=Color.White};inspector.Controls.Add(form);columns.Controls.Add(inspector,1,0);
+        form.Controls.Add(MakeLabel("Button details",12,true));form.Controls.Add(MakeLabel("REMOTE BUTTON",8,true));form.Controls.Add(bindingPicker);form.Controls.Add(linked);
+        learn=Button("Link button",Learn);cancel=Button("Cancel",()=>controller.CancelLearning());cancel.Visible=false;form.Controls.Add(Row(learn,cancel));form.Controls.Add(hint);
+        form.Controls.Add(actionContext);form.Controls.Add(actionPicker);launchAppButton=Button("Choose apps…",ChooseLaunchApp);form.Controls.Add(launchAppButton);form.Controls.Add(actionHelp);form.Controls.Add(Button("Apply to all apps",()=>Try(()=>controller.ApplyActionToAllApps(selectedIndex))));
+        voice.Controls.Add(MakeLabel("APP DICTATION SHORTCUT",8,true));voice.Controls.Add(dictationBinding);voice.Controls.Add(dictationBindingHelp);voice.Controls.Add(Button("Review voice settings",ReviewVoiceSettings));form.Controls.Add(voice);
+        void CompactControls(Control parent)
+        {
+            foreach(Control child in parent.Controls)
+            {
+                if(child is WorkspaceButton button){button.Font=WorkspaceStyle.Text(9);button.MinimumSize=new Size(0,30);button.Padding=new Padding(10,3,10,3);}
+                if(child is FlowLayoutPanel row&&row.FlowDirection==FlowDirection.LeftToRight)row.Margin=new Padding(0,0,0,4);
+                CompactControls(child);
+            }
+        }
+        CompactControls(form);bindingPicker.ItemHeight=actionPicker.ItemHeight=20;actionContext.Font=WorkspaceStyle.Text(8,true);actionContext.ForeColor=Palette.Muted;actionHelp.Font=WorkspaceStyle.Text(9);
+        form.ClientSizeChanged+=(_,_)=>{int width=Math.Max(120,form.ClientSize.Width-form.Padding.Horizontal-18);bindingPicker.Width=actionPicker.Width=width;foreach(Control child in form.Controls)child.MaximumSize=new Size(width,0);foreach(var label in new[]{hint,actionHelp,dictationBindingHelp})label.MaximumSize=new Size(width,0);voice.Width=width;voice.MaximumSize=new Size(width,0);};
+        var footer=new FlowLayoutPanel{Dock=DockStyle.Fill,FlowDirection=FlowDirection.RightToLeft,WrapContents=false,Margin=Padding.Empty};footer.Controls.Add(Button("Button test…",()=>ShowPage(WorkspacePage.ButtonTest)));root.Controls.Add(footer,0,2);WorkspaceStyle.Apply(root);return root;
     }
+    private void ReviewVoiceSettings()
+    {
+        sessions.StopVoices();LoadEditable();
+        using var dialog=CreateVoiceSettingsDialog();dialog.ShowDialog(this);LoadEditable();RefreshState();
+    }
+    private Form CreateVoiceSettingsDialog()
+    {
+        var dialog=new Form{Text="Voice settings · "+(controller.AppPlugin?.Name??"Shared controls"),ClientSize=new Size(600,440),MinimumSize=new Size(560,470),StartPosition=FormStartPosition.CenterParent,Font=WorkspaceStyle.Text(),AutoScaleMode=AutoScaleMode.Dpi,BackColor=Palette.Background,MinimizeBox=false,MaximizeBox=false};
+        var layout=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=1,RowCount=2,Margin=Padding.Empty};layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));layout.RowStyles.Add(new RowStyle(SizeType.Percent,100));layout.RowStyles.Add(new RowStyle(SizeType.Absolute,76));dialog.Controls.Add(layout);
+        var form=new EditorPanel{Dock=DockStyle.Fill,Padding=new Padding(28,24,10,12),Margin=Padding.Empty,BackColor=Palette.Background};layout.Controls.Add(form,0,0);
+        confirmed.Margin=new Padding(0,0,0,12);toggle.Margin=new Padding(0,0,0,16);shortcut.Margin=new Padding(0,0,0,16);
+        form.Controls.Add(MakeLabel("App dictation shortcut",18,true));form.Controls.Add(Block("Match the hold-to-dictate shortcut configured in your app. Choose Record and press your shortcut, or type it."));form.Controls.Add(shortcut);form.Controls.Add(confirmed);form.Controls.Add(toggle);form.Controls.Add(microphoneStatus);
+        form.Controls.Add(Row(Button("Test microphone…",()=>{using var test=new MicrophoneTest(controller);test.ShowDialog(dialog);}),Button("Locate app…",ChooseTarget)));
+        var footer=new FlowLayoutPanel{Dock=DockStyle.Fill,FlowDirection=FlowDirection.RightToLeft,WrapContents=false,Padding=new Padding(28,18,16,12),Margin=Padding.Empty,BackColor=Color.White};
+        footer.Paint+=(_,e)=>{using var border=new Pen(Palette.Border);e.Graphics.DrawLine(border,0,0,footer.Width,0);};
+        var save=Button("Save voice settings",()=>{if(SaveVoiceSettings())dialog.DialogResult=DialogResult.OK;},true);var cancelVoice=Button("Cancel",()=>dialog.DialogResult=DialogResult.Cancel);
+        footer.Controls.Add(save);footer.Controls.Add(cancelVoice);layout.Controls.Add(footer,0,1);
+        dialog.FormClosed+=(_,_)=>{form.Controls.Remove(shortcut);form.Controls.Remove(confirmed);form.Controls.Remove(toggle);form.Controls.Remove(microphoneStatus);};
+        WorkspaceStyle.Apply(dialog);return dialog;
+    }
+
     private Control BuildAppsPage()
     {
-        var page=Page(ContentCard("Supported apps","Use a configured app profile, or keep ordinary remote actions with No specific app.",Button("Add app…",AddApplication,true)));
+        var page=Page(Row(Button("Add app…",AddApplication,true),WorkspaceStyle.Label("Or drop an application (.exe) here",10)));
         page.AllowDrop=true;page.DragEnter+=(_,e)=>{if(e.Data?.GetDataPresent(DataFormats.FileDrop)==true)e.Effect=DragDropEffects.Copy;};page.DragDrop+=(_,e)=>{if(e.Data?.GetData(DataFormats.FileDrop) is string[] files&&files.Length==1)AddApplicationPath(files[0]);};
-        page.Controls.Add(ContentCard("No specific app","Keep native remote actions and optional Windows voice typing.",Button("Configure →",()=>{Try(()=>controller.SelectPlugins(controller.Config.DevicePluginID,Configuration.NoSpecificAppID));PopulatePlugins();ShowPage(WorkspacePage.Buttons);} )));
-        foreach(var app in sessions.Catalog.Apps)page.Controls.Add(ContentCard(app.Name,app.App!.Supports(ActionKind.Dictate)?"Buttons and app dictation":"Button actions",Row(Button("Configure →",()=>{Try(()=>controller.SelectPlugins(controller.Config.DevicePluginID,app.Id));PopulatePlugins();LoadEditable();ShowPage(WorkspacePage.Buttons);},true),Button("Locate app…",()=>{Try(()=>controller.SelectPlugins(controller.Config.DevicePluginID,app.Id));PopulatePlugins();ChooseTarget();}))));
+        page.Controls.Add(ContentCard("No specific app","Keep native remote actions and optional Windows voice typing.",Button("Configure",()=>EditApp(Configuration.NoSpecificAppID) )));
+        foreach(var app in sessions.Catalog.Apps)page.Controls.Add(ContentCard(app.Name,app.App!.Supports(ActionKind.Dictate)?"Buttons and app dictation":"Button actions",Row(Button("Configure",()=>EditApp(app.Id),true),Button("Locate app…",()=>{EditApp(app.Id);ChooseTarget();}))));
         page.Controls.Add(ContentCard("Dictation in any app","Windows voice typing uses Win+H in the focused input. Windows controls its microphone session.",Button("Set up Windows voice typing…",SetupVoiceTyping)));
         return page;
     }
-    private Control BuildMicrophonePage()=>Page(ContentCard("Hear your remote","Choose an input, record a bounded five-second preview, then play it back. Recording starts only when you select Start test.",MakeLabel(controller.MicrophoneSummary,10),Button("Open microphone test…",TestMicrophone,true)));
+    private void EditApp(string id)=>Try(()=>{controller.SelectPlugins(controller.Config.DevicePluginID,id);selectedIndex=0;PopulatePlugins();LoadEditable();ShowPage(WorkspacePage.Buttons);});
+    private Control BuildMicrophonePage()=>Page(ContentCard("Microphone input",controller.MicrophoneSummary,Button("Choose & test microphone…",TestMicrophone,true),Button("Windows microphone setup with screenshot",ShowWindowsMicrophoneGuide)),ContentCard("App dictation","Configure your app’s verified shortcut. Select the same microphone in the target app.",Button("Review voice settings…",ReviewVoiceSettings)),ContentCard("Windows voice typing","Use Win+H in other apps. Windows manages listening; stop it in the Windows voice typing panel.",Button("Set up Windows voice typing…",SetupVoiceTyping)));
     private Control BuildSettingsPage()
     {
         var connectionButton=Button(controller.Running?"Disconnect":"Connect remote",Connect,true);
@@ -109,18 +152,18 @@ internal sealed partial class MainWindow
     }
     private Control BuildPluginsPage()
     {
-        var list=Page();var search=new TextBox{Width=700,PlaceholderText="Search installed plugins",Margin=new Padding(0,0,0,24)};
-        var page=new Panel{Dock=DockStyle.Fill};search.Dock=DockStyle.Top;list.Dock=DockStyle.Fill;page.Controls.Add(list);page.Controls.Add(search);
+        var list=Page();var search=new WorkspaceTextBox{Width=700,PlaceholderText="Search by name or plugin ID",AccessibleName="Search installed plugins"};
+        var page=new Panel{Dock=DockStyle.Fill};var searchHost=new TableLayoutPanel{Dock=DockStyle.Top,Height=76,RowCount=2,ColumnCount=1,Padding=new Padding(0,0,0,14)};searchHost.RowStyles.Add(new(SizeType.Absolute,22));searchHost.RowStyles.Add(new(SizeType.Percent,100));searchHost.Controls.Add(WorkspaceStyle.Label("Search plugins",9,true),0,0);search.Dock=DockStyle.Fill;searchHost.Controls.Add(search,0,1);list.Dock=DockStyle.Fill;page.Controls.Add(list);page.Controls.Add(searchHost);
         void Populate()
         {
             foreach(Control item in list.Controls.Cast<Control>().ToArray())item.Dispose();list.Controls.Clear();
-            foreach(var plugin in sessions.Catalog.Plugins.Where(p=>(p.Name+" "+p.Id+" "+p.Kind).Contains(search.Text,StringComparison.OrdinalIgnoreCase)))list.Controls.Add(ContentCard(plugin.Name,$"{plugin.Kind} · Version {plugin.Version} · {plugin.Author}\n{plugin.Id}",Button(plugin.Kind=="device"?"Open remote →":"Choose app →",()=>{if(plugin.Kind=="device")SelectRemote(plugin.Id);else{Try(()=>controller.SelectPlugins(controller.Config.DevicePluginID,plugin.Id));PopulatePlugins();ShowPage(WorkspacePage.Buttons);}})));
+            foreach(var plugin in sessions.Catalog.Plugins.Where(p=>(p.Name+" "+p.Id+" "+p.Kind).Contains(search.Text,StringComparison.OrdinalIgnoreCase)))list.Controls.Add(ContentCard(plugin.Name,$"{plugin.Kind} · Version {plugin.Version} · {plugin.Author}\n{plugin.Id}",Button(plugin.Kind=="device"?"Open remote":"Choose app",()=>{if(plugin.Kind=="device")SelectRemote(plugin.Id);else EditApp(plugin.Id);})));
             if(sessions.Catalog.Diagnostics.Count>0)list.Controls.Add(ContentCard("Plugin diagnostics",string.Join("\n",sessions.Catalog.Diagnostics)));
-            list.Controls.Add(ContentCard("Install community plugins","Place each plugin folder in your user plugin directory. Reloading explicitly disconnects receivers.",Row(Button("Open plugin folder",()=>{Directory.CreateDirectory(sessions.PluginDirectory);WorkspaceStyle.Open(sessions.PluginDirectory);}),Button("Reload plugins",()=>Try(()=>{var id=controller.Config.DevicePluginID;sessions.Reload();controller=sessions.Controllers.GetValueOrDefault(id)??sessions.Initial??controller;PopulatePlugins();BuildNavigation();ShowPage(WorkspacePage.Plugins);})))));
+            list.Controls.Add(ContentCard("Install community plugins","Place each plugin folder in your user plugin directory. Reloading explicitly disconnects receivers.",Row(Button("Open plugin folder",()=>{Directory.CreateDirectory(sessions.PluginDirectory);WorkspaceStyle.Open(sessions.PluginDirectory);}),Button("Reload plugins",()=>Try(()=>{var id=controller.Config.DevicePluginID;sessions.Reload();controller=sessions.Controllers.GetValueOrDefault(id)??sessions.Initial??controller;PopulatePlugins();LoadEditable();BuildNavigation();ShowPage(WorkspacePage.Plugins);})))));
         }
         search.TextChanged+=(_,_)=>Populate();Populate();return page;
     }
-    private Control BuildHelpPage()=>Page(ContentCard("A clear path from setup to your first action","1. Open a remote from Remotes.\n2. Choose an app inside that remote.\n3. Link its buttons and assign actions.\n4. Configure microphone and voice if needed.",Button("Choose a remote →",()=>ShowPage(WorkspacePage.Remotes),true)),ContentCard("Something isn’t working?","No buttons: check the receiver connection.\nNo app action: check the selected profile, focus, and button link.\nWindows cannot send shortcuts into higher-privilege apps: run both apps at the same permission level.\nNo voice: match the shortcut and app microphone selection.",Row(Button("Connection check",ConnectionCheck),Button("Microphone test",TestMicrophone),Button("Open setup guides",()=>WorkspaceStyle.Open(Path.Combine(AppContext.BaseDirectory,"PluginAuthoring","guides"))))));
+    private Control BuildHelpPage()=>Page(ContentCard("Windows microphone setup","Set the remote as both Windows input defaults, then confirm your app shortcut.",Button("View Windows setup screenshot",ShowWindowsMicrophoneGuide)),ContentCard("A clear path from setup to your first action","1. Open a remote from Remotes.\n2. Choose an app inside that remote.\n3. Link its buttons and assign actions.\n4. Configure microphone and voice if needed.",Button("Choose a remote",()=>ShowPage(WorkspacePage.Remotes),true)),ContentCard("Something isn’t working?","No buttons: check the receiver connection.\nNo app action: check the selected profile, focus, and button link.\nWindows cannot send shortcuts into higher-privilege apps: run both apps at the same permission level.\nNo voice: match the shortcut and app microphone selection.",Row(Button("Connection check",ConnectionCheck),Button("Microphone test",TestMicrophone),Button("Open setup guides",()=>WorkspaceStyle.Open(Path.Combine(AppContext.BaseDirectory,"PluginAuthoring","guides"))))));
     private Control BuildButtonTestPage()
     {
         var test=new RemoteCanvas{Height=520,Width=700};test.Selected+=SelectControl;
@@ -178,6 +221,12 @@ internal sealed partial class MainWindow
         }
         picker.SelectedIndexChanged+=(_,_)=>{if(picker.SelectedItem is PluginManifest app){var path=CurrentPath(app);location.Text=path.Length>0?path:"Locate this app’s .exe so it can open when closed.";}};
         stack.Controls.Add(picker);stack.Controls.Add(location);stack.Controls.Add(Button("Locate selected app…",()=>{if(picker.SelectedItem is PluginManifest app)Locate(app);}));
+        void MoveApp(int direction)
+        {
+            int index=picker.SelectedIndex,next=index+direction;if(index<0||next<0||next>=picker.Items.Count)return;
+            var item=picker.Items[index];bool check=picker.GetItemChecked(index);picker.Items.RemoveAt(index);picker.Items.Insert(next,item);picker.SetItemChecked(next,check);picker.SelectedIndex=next;
+        }
+        stack.Controls.Add(Row(Button("Move up",()=>MoveApp(-1)),Button("Move down",()=>MoveApp(1))));
         stack.Controls.Add(Row(Button("Cancel",()=>dialog.DialogResult=DialogResult.Cancel),Button("Save Action",()=>{
             var selected=picker.CheckedItems.Cast<PluginManifest>().ToArray();
             if(selected.Length is <1 or >64){MessageBox.Show(dialog,"Select between 1 and 64 apps.","Open apps");return;}

@@ -32,16 +32,45 @@ internal static class LocalAppRegistration
         return plugin;
     }
 }
-internal sealed class ShortcutRecorder:TextBox
+internal sealed class ShortcutRecorder:WorkspaceTextBox
 {
     private bool recording;private string previous="";
-    public ShortcutRecorder(){AccessibleName="Dictation shortcut. Double-click to record a shortcut.";DoubleClick+=(_,_)=>{previous=Text;recording=true;ReadOnly=true;Text="Press a shortcut…";};}
+    private readonly WorkspaceButton record;
+    public ShortcutRecorder()
+    {
+        AccessibleName="Dictation shortcut";PlaceholderText="e.g. CTRL+SHIFT+D";
+        record=WorkspaceStyle.Button("Record",BeginRecording);record.AccessibleName="Record dictation shortcut";record.AutoSize=false;record.MinimumSize=Size.Empty;record.Margin=Padding.Empty;Controls.Add(record);
+        DoubleClick+=(_,_)=>BeginRecording();
+    }
+    protected override int EditRightInset=>(int)Math.Round(104*DeviceDpi/96f);
+    protected override void OnLayout(LayoutEventArgs e)
+    {
+        base.OnLayout(e);if(record!=null)record.Bounds=new Rectangle(FieldBounds.Right+(int)Math.Round(12*DeviceDpi/96f),0,EditRightInset-(int)Math.Round(12*DeviceDpi/96f),Height);
+    }
+    internal void VerifyPresentation()
+    {
+        PerformLayout();
+        if(!ClientRectangle.Contains(record.Bounds)||record.Left<FieldBounds.Right+(int)Math.Round(8*DeviceDpi/96f))throw new InvalidOperationException("Shortcut Record button overlaps the input or is clipped.");
+    }
+    private void BeginRecording(){previous=Text;recording=true;ReadOnly=true;Text="Press a shortcut…";FocusEdit();}
+    private void CancelRecording(){recording=false;ReadOnly=false;Text=previous;}
+    protected override bool ProcessEditCommand(Keys keys)
+    {
+        if(!recording)return base.ProcessEditCommand(keys);
+        var e=new KeyEventArgs(keys);
+        if(e.KeyCode==Keys.Tab){CancelRecording();return false;}
+        CaptureShortcut(e);return true;
+    }
     protected override void OnKeyDown(KeyEventArgs e)
     {
         if(!recording){base.OnKeyDown(e);return;}
-        if(e.KeyCode==Keys.Tab){recording=false;ReadOnly=false;Text=previous;base.OnKeyDown(e);return;}
+        if(e.KeyCode==Keys.Tab){CancelRecording();base.OnKeyDown(e);return;}
+        CaptureShortcut(e);
+    }
+    private void CaptureShortcut(KeyEventArgs e)
+    {
         e.SuppressKeyPress=true;e.Handled=true;
-        if(e.KeyCode==Keys.Escape){recording=false;ReadOnly=false;Text=previous;return;}
+        if(e.KeyCode==Keys.Escape){CancelRecording();return;}
         if(e.KeyCode==Keys.RMenu||e.KeyCode==Keys.Menu&&(GetKeyState(0xA5)&0x8000)!=0){Text="RALT";recording=false;ReadOnly=false;return;}
         string? key=e.KeyCode switch{Keys.Enter=>"ENTER",Keys.Space=>"SPACE",Keys.Back=>"BACKSPACE",_ when e.KeyCode>=Keys.A&&e.KeyCode<=Keys.Z=>e.KeyCode.ToString(),_=>null};
         if(key==null)return;
@@ -49,7 +78,7 @@ internal sealed class ShortcutRecorder:TextBox
         Text=string.Join('+',parts);recording=false;ReadOnly=false;
     }
     [System.Runtime.InteropServices.DllImport("user32.dll")]private static extern short GetKeyState(int key);
-    protected override void OnLeave(EventArgs e){if(recording){recording=false;ReadOnly=false;Text=previous;}base.OnLeave(e);}
+    protected override void OnLeave(EventArgs e){if(recording)CancelRecording();base.OnLeave(e);}
 }
 internal sealed class VoiceTypingSetup:Form
 {
@@ -59,9 +88,12 @@ internal sealed class VoiceTypingSetup:Form
         var stack=WorkspaceStyle.Stack(584);stack.Dock=DockStyle.Fill;stack.AutoSize=false;stack.AutoScroll=true;stack.Padding=new Padding(WorkspaceStyle.Inset);Controls.Add(stack);
         stack.Controls.Add(WorkspaceStyle.Label("Dictation in any app",18,true,true,560));
         stack.Controls.Add(WorkspaceStyle.Label("Windows voice typing uses Win+H in the focused text field. Windows controls listening; use its microphone panel to stop it. This does not record or route audio through JustVibe.",10,false,false,560));
-        var mode=new ComboBox{DropDownStyle=ComboBoxStyle.DropDownList,Width=540,DataSource=new[]{"Off","When app dictation is not configured","In every app"},SelectedIndex=(int)controller.Config.VoiceTyping.Mode,Margin=new Padding(0,0,0,16)};
+        var mode=new WorkspacePicker{DropDownStyle=ComboBoxStyle.DropDownList,Width=540,Margin=new Padding(0,0,0,16)};
+        mode.Items.AddRange(new object[]{"Off","When app dictation is not configured","In every app"});
+        mode.SelectedIndex=(int)controller.Config.VoiceTyping.Mode;
         var bindings=controller.Config.Bindings.Where(b=>b.ControlID!=null).ToArray();
-        var button=new ComboBox{DropDownStyle=ComboBoxStyle.DropDownList,Width=540,DataSource=bindings.Select(b=>b.Name).ToArray(),Margin=new Padding(0,0,0,16)};
+        var button=new WorkspacePicker{DropDownStyle=ComboBoxStyle.DropDownList,Width=540,Margin=new Padding(0,0,0,16)};
+        button.Items.AddRange(bindings.Select(b=>(object)b.Name).ToArray());
         int selected=Array.FindIndex(bindings,b=>b.ControlID==controller.Config.VoiceTyping.ControlID);button.SelectedIndex=selected>=0?selected:bindings.Length>0?0:-1;
         var confirmed=new CheckBox{Text="I have checked Windows voice typing with Win+H",AutoSize=true,Checked=controller.Config.VoiceTyping.Confirmed,Margin=new Padding(0,0,0,16)};
         stack.Controls.Add(WorkspaceStyle.Label("Use Windows voice typing",10,true));stack.Controls.Add(mode);stack.Controls.Add(WorkspaceStyle.Label("Remote button",10,true));stack.Controls.Add(button);stack.Controls.Add(confirmed);
@@ -70,35 +102,5 @@ internal sealed class VoiceTypingSetup:Form
             try{controller.Update(controller.Config with{VoiceTyping=new((VoiceTypingMode)mode.SelectedIndex,button.SelectedIndex>=0?bindings[button.SelectedIndex].ControlID:null,confirmed.Checked)});Close();}
             catch(Exception error){MessageBox.Show(this,error.Message,Text);}
         },true)));WorkspaceStyle.Apply(this);
-    }
-}
-internal sealed class AddRemoteFlow:Form
-{
-    public string? SelectedPluginID { get; private set; }
-    public AddRemoteFlow(PluginCatalog catalog)
-    {
-        Text="Add a remote";ClientSize=new Size(840,640);MinimumSize=new Size(760,560);StartPosition=FormStartPosition.CenterParent;Font=WorkspaceStyle.Text();AutoScaleMode=AutoScaleMode.Dpi;BackColor=Palette.Background;
-        var root=new TableLayoutPanel{Dock=DockStyle.Fill,Padding=new Padding(28),RowCount=4,ColumnCount=1};root.RowStyles.Add(new(SizeType.Absolute,112));root.RowStyles.Add(new(SizeType.Percent,100));root.RowStyles.Add(new(SizeType.Absolute,72));root.RowStyles.Add(new(SizeType.Absolute,112));Controls.Add(root);
-        var header=WorkspaceStyle.Stack();header.Controls.Add(WorkspaceStyle.Label("Add your remote",20,true,true));header.Controls.Add(WorkspaceStyle.Label("Pair in Windows Bluetooth settings or connect its USB receiver, then refresh. Select a supported identity to open its setup.",10,false,false,760));root.Controls.Add(header,0,0);
-        var list=new ListBox{Dock=DockStyle.Fill,HorizontalScrollbar=true,IntegralHeight=false,AccessibleName="Connected input devices"};root.Controls.Add(list,0,1);
-        var status=WorkspaceStyle.Label("",9,false,false,760);status.Dock=DockStyle.Fill;root.Controls.Add(status,0,2);
-        var devices=new List<(string Path,string? Plugin)>();
-        void RefreshDevices()
-        {
-            list.Items.Clear();devices.Clear();
-            foreach(var path in NativeInput.Discover())
-            {
-                var matches=catalog.Devices.Where(d=>ReceiverDecoder.Matches(path,d.Device!.Profile)).ToArray();
-                devices.Add((path,matches.Length==1?matches[0].Id:null));list.Items.Add((matches.Length==1?matches[0].Name:matches.Length>1?"Ambiguous receiver profiles":"Unidentified input device")+" · "+path);
-            }
-            status.Text="A device path is identity evidence, not proof of button or microphone support. Unknown devices can use the agent setup prompt.";
-        }
-        root.Controls.Add(WorkspaceStyle.Row(WorkspaceStyle.Button("Bluetooth settings",()=>WorkspaceStyle.Open("ms-settings:bluetooth")),WorkspaceStyle.Button("Refresh",RefreshDevices),WorkspaceStyle.Button("Get agent setup prompt",()=>{
-            var identity=list.SelectedIndex>=0?devices[list.SelectedIndex].Path:"No device selected";
-            Clipboard.SetText("Help me identify my remote in JustVibe Remote on Windows. Ask for the model and a clear front photo. Use read-only receiver evidence; do not guess VID/PID, usages, or microphone transport. Check installed support before creating a plugin. Follow AGENTS.md and the PluginAuthoring guides. Observed interface: "+identity);
-            status.Text="Setup prompt copied. Attach a clear front photo in your coding chat. Open the starter folder for guides.";
-        }),WorkspaceStyle.Button("Starter and guides",()=>WorkspaceStyle.Open(Path.Combine(AppContext.BaseDirectory,"PluginAuthoring"))),WorkspaceStyle.Button("Open remote",()=>{if(list.SelectedIndex>=0&&devices[list.SelectedIndex].Plugin is {} id){SelectedPluginID=id;DialogResult=DialogResult.OK;}else status.Text="Select an interface with one matching installed plugin. Otherwise use the setup prompt.";},true)),0,3);
-        if(root.GetControlFromPosition(0,3) is FlowLayoutPanel footer)footer.MaximumSize=new Size(680,0);
-        RefreshDevices();WorkspaceStyle.Apply(this);
     }
 }

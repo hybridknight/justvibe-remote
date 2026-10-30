@@ -21,6 +21,10 @@ or pushed. Do not use a fresh remote checkout without transferring these changes
 
 ## First steps on Windows
 
+For end-user connection, button mapping, and microphone setup, see
+[Windows setup and dictation](WINDOWS-SETUP.md). The steps below are developer
+verification; users of the packaged release do not need the SDK.
+
 Install the .NET 10 SDK, open this folder in Codex, and run from the repository root:
 
 ```powershell
@@ -31,7 +35,8 @@ dotnet run --project windows/JustVibeRemote.Tests -- .
 ```
 
 The UI script opens an isolated preview process with temporary settings. It creates
-29 screenshots and `verification.json` in `build/windows-ui-verification`. It does
+35 screenshots and `verification.json` in `build/windows-ui-verification`, including
+the Windows microphone screenshot guide at normal and compact sizes. It does
 not start a receiver, send shortcuts, or capture audio. Check every screenshot,
 including both page sizes and all setup stages/dialogs. Repeat at 100%, 150%, and
 200% display scaling using separate `-OutputDirectory` folders; fix font fallback,
@@ -41,7 +46,7 @@ Then launch `dist/windows-win-x64/JustVibeRemote.exe` (or the ARM64 build), chec
 navigation, app registration, saved profiles, photo selection/reset, plugin search,
 setup continuation, and the new Open app picker. Assign Power to ChatGPT, test it
 closed and already running, then test picker cancellation and target removal.
-The new picker is a manual native check; it is not among the 29 automated previews.
+The new picker is a manual native check; it is not among the 35 automated previews.
 Use disposable settings for experiments; preserve the
 user's existing `%APPDATA%/JustVibeRemote` data.
 

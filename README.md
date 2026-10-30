@@ -45,6 +45,8 @@ After building:
 
 **Test with a real keyboard first.** Open the target app, focus the intended input, and press its shortcut on your keyboard to confirm the action works. For dictation, check whether you must hold the keys while speaking or press once to start and again to stop. Resolve any shortcut or microphone issues in the target app first, then configure the remote with the same keys and matching hold or toggle behavior. For macOS Dictation, test its shortcut in a supported text field before configuring **Dictation in any app**.
 
+**Windows:** follow the [Windows setup and dictation guide](docs/WINDOWS-SETUP.md). It covers linking the microphone button, confirming the app shortcut, setting both Windows microphone defaults, and resolving blocked dictation.
+
 On macOS:
 
 1. Open **Remotes**, choose **Set up remote**, and follow the welcome guide.
@@ -127,7 +129,7 @@ dotnet run --project windows/JustVibeRemote.PluginTool -- validate /absolute/pat
 
 ## Status and limitations
 
-These are development builds. Local macOS builds are not Apple-notarized; the Windows package has been compiled but has not been run on Windows. The user has verified macOS microphone recording/playback and remote-triggered ChatGPT dictation; the latest ChatGPT shortcut change has not been retested live.
+These are development builds. Local macOS builds are not Apple-notarized. The Windows x64 package has been built and run on Windows, with native UI previews and checks for menu repainting, action saving, profile switching, and shortcut persistence. Physical receiver behavior and Windows dictation still need live acceptance testing. The user has verified macOS microphone recording/playback and remote-triggered ChatGPT dictation; the latest ChatGPT shortcut change has not been retested live.
 
 Windows custom actions run alongside native button actions. On macOS, multiple remotes require distinct receiver hardware IDs. Remote cursor settings adjust native speed and acceleration only; physical calibration is not supported.
 

@@ -23,5 +23,5 @@ if (-not $Process.WaitForExit(120000)) {
 if ($Process.ExitCode -ne 0) { throw "Native UI checks failed. Read $OutputDirectory/failure.txt" }
 if (-not (Test-Path (Join-Path $OutputDirectory "verification.json"))) { throw "The app did not produce a verification report." }
 $Report = Get-Content (Join-Path $OutputDirectory "verification.json") -Raw | ConvertFrom-Json
-if (-not $Report.passed -or $Report.images -ne 29 -or $Report.deviceTests -or $Report.audioCapture) { throw "Native UI verification did not satisfy the expected checks." }
+if (-not $Report.passed -or $Report.images -ne 35 -or -not $Report.editingWorkflows -or -not $Report.hoverRepaint -or $Report.deviceTests -or $Report.audioCapture) { throw "Native UI verification did not satisfy the expected checks." }
 Write-Host "Verified $($Report.images) native Windows previews at $($Report.dpi) DPI. No receiver started or audio captured."

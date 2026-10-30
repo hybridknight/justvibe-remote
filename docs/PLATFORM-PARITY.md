@@ -1,11 +1,37 @@
 # Platform support review — 2026-10-30
 
-**Status:** Windows implementation and portable checks are available. Native app UI
-and physical-device acceptance remain pending on the user's Windows machine.
+**Status:** Windows x64 builds, 251 portable checks, and native UI/editor verification
+have passed on Windows. Physical-device and cross-app dictation acceptance remain pending.
+
+The Windows UI review also exercised the live app and exposed overlapping native/custom
+button painting that static previews missed. Navigation, action buttons, and the remote's
+controls now use one managed paint path. Automated checks cover repeated hover/leave,
+rounded-button backgrounds, action persistence without voice setup, stable action pickers,
+profile-specific shortcut reload, shared routing labels, and an editor without horizontal
+scrolling at both tested window sizes (1400×940 and 1200×840). The 33 image previews use
+WinForms rendering; live window inspection remains a separate check. Tests use isolated
+settings and do not start a receiver, inject shortcuts, or capture audio. High-DPI and
+physical-device checks below remain outstanding. Earlier cross-compilation evidence below
+is historical and does not replace this native review.
+
+The Windows Buttons page now follows the macOS source layout: an app-profile strip,
+a central remote with one connected action/link card per visible control, and a
+250-unit button-details inspector. Inline changes use the same saved profile actions
+as the inspector. Voice settings open separately; the inspector shows the current
+shortcut and confirmation summary. The palette, sidebar groups, branding, and spacing
+follow the Mac workspace while Windows keeps native Segoe UI text rendering and its
+existing input/output behavior. Synthetic editor checks exercise inline action saving,
+profile-strip selection, complete card visibility, and reopening voice settings.
+
+Windows controls share consistent button heights, field insets, rounded borders,
+chevrons and focus states. Text inputs retain a native Windows edit control inside
+the styled surface. Verification covers text-change forwarding, native editor focus,
+shortcut capture/cancellation through the child editor, disabled controls, and two
+additional control-surface previews. No OS font-smoothing preferences are changed.
 
 This is a source/build review, not a claim that Windows hardware or UI tests ran on macOS.
 The Windows frontend had a single editor before this change. It now has the same
-workspace page families and shared font/spacing system as the Mac frontend.
+workspace page families as the Mac frontend, with platform-native Windows typography.
 In the table below, “Implemented” means present in source and cross-compiled; it
 does not mean the feature passed a native or physical-device test.
 
@@ -34,12 +60,14 @@ does not mean the feature passed a native or physical-device test.
 | Held-delete repeat | Available | Implemented with focus/testing/learning checks; needs live Windows verification |
 | Shortcut entry and recording | Mac key grammar | Windows key grammar, including explicit RALT |
 | Single normal process | Available | Existing named mutex retained; UI verification uses isolated temporary settings |
-| Offline typography and spacing | Manrope / Inter | Same fonts as private static GDI/GDI+ faces; native DPI scaling |
+| Offline typography and spacing | Manrope / Inter | Native Segoe UI / Segoe UI Semibold; GDI control text and per-monitor DPI scaling |
 
 The shared spacing scale is 4/8/12/16/24/28, with 24-unit card insets and 28-unit
-page side margins. The Windows fonts ship inside the app and load privately; no
-system font installation or network font download is required. Actual Windows
-font rendering and display scaling still need visual inspection.
+page side margins. Windows uses its installed Segoe UI family, without private font
+registration or a network font download. Labels, navigation, buttons, dropdowns,
+and receiver rows share the native text renderer. Native UI verification checks
+font selection and consistent label rendering. Multi-monitor display scaling still
+requires live inspection.
 
 ## Platform boundaries — not equivalent support claims
 
@@ -98,7 +126,7 @@ The temporary Mac-hosted Windows VM was removed at the user's request before the
 app's native UI verification ran. No native app or hardware pass is claimed.
 
 Run `scripts/test-windows-ui.ps1` on Windows. It uses temporary settings and creates
-29 page/setup/dialog screenshots plus `verification.json`; it does not start a
+33 page/setup/dialog screenshots plus `verification.json`; it does not start a
 receiver, send a shortcut, or capture audio. The runner waits for the preview
 process, rejects stale or missing reports, checks the expected screenshot count,
 and stops a hung preview after two minutes. Check screenshots at 100%, 150% and

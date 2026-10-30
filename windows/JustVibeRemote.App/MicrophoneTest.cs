@@ -6,11 +6,11 @@ namespace JustVibeRemote;
 internal sealed class MicrophoneTest:Form
 {
     private readonly RemoteController controller;
-    private readonly ComboBox picker=new(){DropDownStyle=ComboBoxStyle.DropDownList,Width=570};
+    private readonly WorkspacePicker picker=new(){DropDownStyle=ComboBoxStyle.DropDownList,Width=570};
     private readonly Label source=Block(""),system=Block(""),result=Block("Choose your remote’s microphone, then start a short test.");
     private readonly ProgressBar meter=new(){Width=570,Height=22};
     private readonly CheckBox protect=new(){Text="Block remote dictation when system input differs",AutoSize=true,Checked=true};
-    private readonly Button record=new(){Text="Start 5-second test",AutoSize=true},play=new(){Text="Play back",AutoSize=true};
+    private readonly WorkspaceButton record,play,stop,clear;
     private readonly System.Windows.Forms.Timer timer=new(){Interval=100};
     private List<AudioInput> inputs=[];
     private MicrophoneCapture? audio;
@@ -18,25 +18,25 @@ internal sealed class MicrophoneTest:Form
     private DateTime started,lastScan;private bool ended,loading;
     public MicrophoneTest(RemoteController controller)
     {
-        this.controller=controller;Text="Microphone test";ClientSize=new Size(650,700);MinimumSize=new Size(650,600);Font=WorkspaceStyle.Text(10);BackColor=Color.White;StartPosition=FormStartPosition.CenterParent;AutoScaleMode=AutoScaleMode.Dpi;
+        this.controller=controller;record=WorkspaceStyle.Button("Start 5-second test",()=>Try(Start),true);play=WorkspaceStyle.Button("Play back",()=>Try(Play));stop=Button("Stop",Stop);clear=Button("Clear preview",Clear);Text="Microphone test";ClientSize=new Size(650,700);MinimumSize=new Size(650,600);Font=WorkspaceStyle.Text(10);BackColor=Color.White;StartPosition=FormStartPosition.CenterParent;AutoScaleMode=AutoScaleMode.Dpi;
         var stack=new FlowLayoutPanel{Dock=DockStyle.Fill,FlowDirection=FlowDirection.TopDown,WrapContents=false,AutoScroll=true,Padding=new Padding(WorkspaceStyle.Inset)};Controls.Add(stack);
         var heading=Block("Hear your remote’s microphone");heading.Font=WorkspaceStyle.Text(21,true,true);stack.Controls.Add(heading);
         stack.Controls.Add(Block("Choose the remote’s USB audio input. Names can be generic; confirm the source by speaking near the remote, away from the computer."));
         stack.Controls.Add(picker);var devicesRow=new FlowLayoutPanel{AutoSize=true};devicesRow.Controls.Add(Button("Refresh",Reload));devicesRow.Controls.Add(Button("Microphone permissions…",()=>Process.Start(new ProcessStartInfo("ms-settings:privacy-microphone"){UseShellExecute=true})));stack.Controls.Add(devicesRow);stack.Controls.Add(source);stack.Controls.Add(meter);stack.Controls.Add(result);
-        var actions=new FlowLayoutPanel{AutoSize=true,WrapContents=false};actions.Controls.Add(record);actions.Controls.Add(Button("Stop",Stop));actions.Controls.Add(play);actions.Controls.Add(Button("Delete clip",Clear));stack.Controls.Add(actions);
+        var actions=new FlowLayoutPanel{AutoSize=true,WrapContents=true,MaximumSize=new Size(570,0)};actions.Controls.Add(record);actions.Controls.Add(stop);actions.Controls.Add(play);actions.Controls.Add(clear);stack.Controls.Add(actions);
         stack.Controls.Add(Block("Hold the remote’s mic button while speaking if needed. The five-second mono preview stays in memory, is never uploaded, and is deleted on close."));
         stack.Controls.Add(system);stack.Controls.Add(Button("Open Windows Sound input settings",()=>Process.Start(new ProcessStartInfo("ms-settings:sound"){UseShellExecute=true})));
         stack.Controls.Add(protect);stack.Controls.Add(Block("Select this mic as both default input and default communications input in Windows. ChatGPT input is not verified here: choose the same mic or System Default in your app, close this test, and dictate a phrase there."));
-        var finish=new FlowLayoutPanel{AutoSize=true};finish.Controls.Add(Button("Save microphone choice",Save));finish.Controls.Add(Button("Close",Close));stack.Controls.Add(finish);
+        var finish=new FlowLayoutPanel{AutoSize=true};finish.Controls.Add(Button("Save microphone choice",Save,true));finish.Controls.Add(Button("Close",Close));stack.Controls.Add(finish);
         if(controller.Config.Microphones.TryGetValue(controller.Config.DevicePluginID,out var preference))protect.Checked=preference.GuardDictation;
-        picker.SelectedIndexChanged+=(_,_)=>{if(!loading)Try(()=>{Clear();UpdateLabels();});};record.Click+=(_,_)=>Try(Start);play.Click+=(_,_)=>Try(Play);
+        picker.SelectedIndexChanged+=(_,_)=>{if(!loading)Try(()=>{Clear();UpdateLabels();});};
         timer.Tick+=(_,_)=>Try(RefreshTest);Shown+=(_,_)=>{controller.BeginMicrophoneTest();timer.Start();};
         FormClosing+=(_,e)=>{if(ended)return;try{Clear();ended=true;timer.Stop();controller.EndMicrophoneTest();}catch(Exception error){e.Cancel=true;MessageBox.Show(this,error.Message,"Microphone test");}};
         WorkspaceStyle.Apply(this);
         Reload();
     }
     private static Label Block(string text)=>new(){Text=text,AutoSize=true,MaximumSize=new Size(570,0),Margin=new Padding(0,0,0,WorkspaceStyle.Controls),ForeColor=Palette.Ink};
-    private static Button Button(string text,Action action){var b=new Button{Text=text,AutoSize=true};b.Click+=(_,_)=>{try{action();}catch(Exception error){MessageBox.Show(error.Message,"Microphone test");}};return b;}
+    private static WorkspaceButton Button(string text,Action action,bool primary=false)=>WorkspaceStyle.Button(text,()=>{try{action();}catch(Exception error){MessageBox.Show(error.Message,"Microphone test");}},primary);
     private AudioInput? Selected=>picker.SelectedIndex>0&&picker.SelectedIndex<=inputs.Count?inputs[picker.SelectedIndex-1]:null;
     private void Reload()
     {
@@ -49,7 +49,7 @@ internal sealed class MicrophoneTest:Form
         source.Text=Selected is {} input?"Test input: "+input.Name:"No microphone selected. No input fallback is used.";
         var defaults=AudioInputs.Defaults();
         system.Text=Selected!=null&&defaults.Count==3&&defaults.All(id=>id==Selected.Id)?"All Windows input defaults match this mic. Your app can still override them.":"System input defaults do not all match the selected mic (or could not be read). Change them in Sound settings before protected dictation.";
-        record.Enabled=Selected!=null&&audio?.Recording!=true;play.Enabled=audio?.Preview?.Count>0;
+        record.Enabled=Selected!=null&&audio?.Recording!=true;play.Enabled=audio?.Preview?.Count>0;stop.Enabled=audio?.Recording==true;clear.Enabled=audio?.Preview?.Count>0;
     }
     private void Start()
     {
