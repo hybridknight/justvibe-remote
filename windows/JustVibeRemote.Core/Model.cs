@@ -30,7 +30,8 @@ public readonly record struct Usage(uint Page, uint Code)
 }
 [JsonConverter(typeof(JsonStringEnumConverter<ActionKind>))]
 public enum ActionKind { Native, Dictate, Focus, Send, Backspace, Escape }
-public sealed record Binding(string Name, Usage? Usage, ActionKind Action, string? ControlID = null, string? LaunchAppID = null, string? LaunchAppPath = null);
+public sealed record LaunchApp(string Id,string? Path = null);
+public sealed record Binding(string Name, Usage? Usage, ActionKind Action, string? ControlID = null, string? LaunchAppID = null, string? LaunchAppPath = null, List<LaunchApp>? LaunchApps = null);
 public sealed record Configuration
 {
     [JsonIgnore] public string TargetInstance { get; init; }="";

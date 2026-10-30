@@ -194,6 +194,37 @@ enum PluginSelection {
         return try select(config, catalog: catalog, deviceID: deviceID, appID: appID)
     }
 
+    /// Copy only this control's action. Profile settings and learned signals stay local.
+    static func applyActionToAllApps(_ config:Configuration,index:Int,catalog:PluginCatalog) throws -> (config:Configuration,applied:Int,skipped:[String]) {
+        guard config.bindings.indices.contains(index) else { throw JustVibeRemoteError.message("Select a remote button first.") }
+        var source=config.bindings[index]
+        if source.action == .focus && source.launchApps == nil && source.launchAppID == nil {
+            guard config.appPluginID != Configuration.noSpecificAppID else { throw JustVibeRemoteError.message("Choose an app for Open app first.") }
+            source.launchAppID=config.appPluginID
+        }
+        var next=config,applied=0,skipped:[String]=[]
+        let profiles=[(Configuration.noSpecificAppID,"Shared controls",AppRouting.sharedActions)] + catalog.apps.map { ($0.id,$0.name,$0.app!) }
+        for (id,name,actions) in profiles {
+            guard source.action == .focus || actions.supports(source.action) else { skipped.append(name);continue }
+            var target=try select(config,catalog:catalog,deviceID:config.devicePluginID,appID:id)
+            let match=target.bindings.firstIndex { item in
+                if let control=source.controlID,let other=item.controlID { return control == other }
+                return item.name.caseInsensitiveCompare(source.name) == .orderedSame
+            }
+            if let match {
+                target.bindings[match].action=source.action
+                target.bindings[match].launchAppID=source.launchAppID;target.bindings[match].launchAppPath=source.launchAppPath;target.bindings[match].launchApps=source.launchApps
+            } else { target.bindings.append(source) }
+            target.dictationTested=false
+            let key=AppRouting.key(config.devicePluginID,id)
+            next.bindingSets[key]=target.bindings;next.appMappings[key]=AppMapping(target)
+            if id == config.appPluginID { next.bindings=target.bindings;next.dictationTested=false }
+            applied += 1
+        }
+        try next.validate()
+        return (next,applied,skipped)
+    }
+
     static func select(_ config: Configuration, catalog: PluginCatalog, deviceID: String, appID: String) throws -> Configuration {
         let device = try catalog.find(deviceID, kind: "device")
         let app = appID == Configuration.noSpecificAppID ? nil : try catalog.find(appID, kind: "app")

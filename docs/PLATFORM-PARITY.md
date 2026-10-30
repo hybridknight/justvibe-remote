@@ -18,7 +18,8 @@ does not mean the feature passed a native or physical-device test.
 | App profiles, target paths, active-app routing | Available | Implemented; portable routing checks pass |
 | Add local app / drag app into Apps | `.app` identity | `.exe` process identity plus explicit path; optional user-confirmed hold shortcut |
 | Buttons, learning, action picker, visual layouts | Available | Implemented |
-| Action → Open app, with app-list selection | Selected app launches or activates; target saved per button | Implemented; saved or user-located `.exe`, with running-process path discovery |
+| Action → Open app, with app-list selection | One or more apps; each press cycles through checked apps in order, with wraparound; drag rows or use Move up/down to reorder | Same cycling behavior; per-app saved or user-located `.exe`, with running-process path discovery |
+| Apply a button action to all apps | Copies to compatible installed profiles and shared controls on this remote; preserves other buttons and per-app shortcuts | Same behavior; portable regression checks pass |
 | Button test page | Scoped native replacement | Mapped output suspended; native Windows input remains additive |
 | Microphone selection, meter, bounded recording/playback/clear | Available | Existing native audio retained; explicit Start is required |
 | Microphone identity and default-input safeguard | Available | Existing stable endpoint/default-role checks retained |
@@ -78,10 +79,16 @@ settings. Native Windows voice typing remains a separately confirmed opt-in.
 - Portable Windows core tests: **228 checks passed**. They cover configuration migration, plugin conformance,
   report decoding, microphone policy, routing/ambiguity, session ownership, shared
   controls, setup persistence, Windows voice fallback, and delayed-start cancellation.
-- Mac regression suites: **359 core + 173 receiver-session checks passed**, using synthetic inputs and temporary settings.
+- Mac regression suites: **396 core + 182 receiver-session checks passed**, using synthetic inputs and temporary settings.
 - Open app checks cover explicit target selection, per-profile persistence, saved
   and explicit launch paths, legacy Show app settings, shared routing, and removed
-  targets. They resolve launch plans without opening apps or sending input.
+  targets. Round-robin checks cover wraparound, independent buttons and remotes,
+  profile changes, persistence, and invalid selections. They resolve launch plans
+  without opening apps or sending input.
+- macOS Open app uses an activating workspace open request for running and closed
+  apps. Synthetic checks cover foreground activation options, preserving the
+  chosen app location, and forwarding launch errors. Chrome-to-ChatGPT switching
+  with the physical Power button still requires a live check.
 - No live microphone recording or shortcut injection was started as a build/test side effect.
 
 ## Native Windows checks still required

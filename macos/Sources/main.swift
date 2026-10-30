@@ -445,10 +445,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         assignment.addArrangedSubview(label("ACTION",size:10,weight:.semibold,color:.rvMuted))
         actionPicker.target=self;actionPicker.action=#selector(changeAction);actionPicker.setAccessibilityLabel("Button action")
         assignment.addArrangedSubview(actionPicker)
-        launchAppButton.title="Choose app…";launchAppButton.bezelStyle = .rounded;launchAppButton.target=self;launchAppButton.action=#selector(chooseLaunchApp)
+        launchAppButton.title="Choose apps…";launchAppButton.bezelStyle = .rounded;launchAppButton.target=self;launchAppButton.action=#selector(chooseLaunchApp)
         assignment.addArrangedSubview(launchAppButton)
         actionHelp.font = WorkspaceTypography.body(11);actionHelp.textColor = .rvMuted
         actionHelp.maximumNumberOfLines=3;actionHelp.cell?.wraps=true;assignment.addArrangedSubview(actionHelp)
+        let applyAll=button("Apply to all apps",#selector(applyActionToAllApps))
+        applyAll.toolTip="Copy this button’s action to every compatible app profile on this remote, including shared controls. Other buttons and app shortcuts keep their own settings."
+        assignment.addArrangedSubview(applyAll)
         voiceSection.orientation = .vertical;voiceSection.alignment = .leading;voiceSection.spacing=WorkspaceSpacing.related
         voiceSection.addArrangedSubview(label("APP DICTATION SHORTCUT",size:10,weight:.semibold,color:.rvMuted))
         dictationBinding.font = WorkspaceTypography.body(19,weight:.semibold);dictationBinding.textColor = .rvAccent
@@ -804,6 +807,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             let name=controller.catalog.apps.first(where:{$0.id == (binding.launchAppID ?? controller.config.appPluginID)})?.name ?? "an unavailable app"
             actionHelp.stringValue="Open \(name) when you press \(binding.name). If it is running, bring it to the front." + (binding.usage == nil ? " Link this button first.":"")
         }
+        if binding.action == .focus,let targets=binding.launchApps,targets.count > 1 {
+            actionHelp.stringValue="Cycle on each press: " + targets.map { item in controller.catalog.apps.first(where:{$0.id == item.id})?.name ?? "Unavailable app" }.joined(separator:" → ") + " → repeat."
+        }
         voiceSection.isHidden=binding.action != .dictate || controller.appPlugin?.app?.supports(.dictate) != true
         let appName=controller.appPlugin?.name ?? "App"
         let toggleShortcut=controller.appPlugin?.app?.actions["dictate"]?.operation == "toggle-shortcut"
@@ -942,30 +948,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         setup.show()
     }
     @objc private func changeAction() { guard actionPicker.indexOfSelectedItem >= 0 else { return };assignAction(controller.availableActions[actionPicker.indexOfSelectedItem]) }
+    @objc private func applyActionToAllApps() {
+        do { try controller.applyActionToAllApps(at:selectedIndex);refresh() } catch { show(error) }
+    }
     @objc private func chooseLaunchApp() { assignAction(.focus) }
     private func assignAction(_ action:RemoteAction) {
         guard action == .focus else {
             var config=controller.config;config.bindings[selectedIndex].action=action
-            config.bindings[selectedIndex].launchAppID=nil;config.bindings[selectedIndex].launchAppPath=nil
+            config.bindings[selectedIndex].launchAppID=nil;config.bindings[selectedIndex].launchAppPath=nil;config.bindings[selectedIndex].launchApps=nil
             do { try controller.update(config);refresh() } catch { show(error) };return
         }
         let session=controller!,index=selectedIndex
         let apps=session.catalog.apps.sorted{$0.name.localizedStandardCompare($1.name) == .orderedAscending}
         guard !apps.isEmpty else { refresh();show(JustVibeRemoteError.message("Add an app in Apps before assigning Open app."));return }
-        let picker=NSPopUpButton(frame:NSRect(x:0,y:0,width:360,height:30))
-        picker.font=WorkspaceTypography.body(13)
-        picker.addItems(withTitles:apps.map(\.name));picker.setAccessibilityLabel("App to open")
-        let existing=session.config.bindings[index].launchAppID ?? session.config.appPluginID
-        picker.selectItem(at:apps.firstIndex(where:{$0.id == existing}) ?? 0)
-        let alert=NSAlert();alert.messageText="Open app";alert.informativeText="Choose the app that \(session.config.bindings[index].name) opens. A running app will be brought to the front."
+        let binding=session.config.bindings[index]
+        let saved=binding.launchApps ?? [LaunchApp(id:binding.launchAppID ?? session.config.appPluginID,path:binding.launchAppPath)]
+        let picker=AppLaunchPicker(apps:apps,saved:saved)
+        let alert=NSAlert();alert.messageText="Open apps";alert.informativeText="Select one or more apps for \(binding.name). Each press opens the next checked app, from top to bottom, then starts again. A running app is brought to the front. Drag rows to change the order."
         alert.accessoryView=picker;alert.addButton(withTitle:"Save Action");alert.addButton(withTitle:"Cancel")
         alert.beginSheetModal(for:window) { [weak self] response in
             guard let self else { return };defer { self.refresh() }
             guard response == .alertFirstButtonReturn else { return }
-            var config=session.config;config.bindings[index].action = .focus;config.bindings[index].launchAppID=apps[picker.indexOfSelectedItem].id;config.bindings[index].launchAppPath=nil
+            let targets=picker.selectedApps
+            guard !targets.isEmpty,targets.count <= 64 else { self.show(JustVibeRemoteError.message("Select between 1 and 64 apps."));return }
+            var config=session.config;config.bindings[index].action = .focus
+            config.bindings[index].launchAppID=targets[0].id;config.bindings[index].launchAppPath=targets[0].path
+            config.bindings[index].launchApps=targets.count > 1 ? targets:nil
             do { try session.update(config) } catch { self.show(error) }
         }
     }
+
     @objc private func saveVoice() { _ = saveVoiceSettings() }
     private func saveVoiceSettings() -> Bool { var config=controller.config;config.shortcut=shortcut.shortcutValue ?? "";config.shortcutConfirmed=confirmed.state == .on;config.voiceMode=toggle.state == .on ? "toggle":"hold";do { try controller.update(config); return true } catch { show(error);return false } }
     @objc private func stopVoice() { sessions.stopVoices() }

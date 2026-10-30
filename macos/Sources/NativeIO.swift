@@ -235,6 +235,11 @@ struct ToggleShortcutTarget {
     }
 }
 final class TargetOutput {
+    // Kept injectable so launch requests can be verified without opening apps.
+    var openApplication: (URL,NSWorkspace.OpenConfiguration,@escaping (Error?)->Void)->Void = { url,options,completion in
+        NSWorkspace.shared.openApplication(at:url,configuration:options) { _,error in completion(error) }
+    }
+
     var plugin: AppPlugin?
     private var heldShortcut: MacShortcut?
     private var toggleLease=ToggleShortcutLease()
@@ -337,17 +342,22 @@ final class TargetOutput {
     }
     func show(_ config: Configuration,completion:((Error?)->Void)? = nil) throws {
         if config.appPluginID == Configuration.noSpecificAppID { return }
-        if let app = target(config) {
-            app.activate(options: [])
-            completion?(nil)
-        } else if !config.targetAppPath.isEmpty {
-            NSWorkspace.shared.openApplication(at: URL(fileURLWithPath: config.targetAppPath), configuration: NSWorkspace.OpenConfiguration()) { _,error in completion?(error) }
-        } else if let url = plugin?.targets["macos"]?.bundleIds.compactMap({ NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0) }).first {
-            NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration()) { _,error in completion?(error) }
-        } else {
+        let url:URL?
+        if let runningURL=target(config)?.bundleURL { url=runningURL }
+        else if !config.targetAppPath.isEmpty { url=URL(fileURLWithPath:config.targetAppPath) }
+        else { url=plugin?.targets["macos"]?.bundleIds.compactMap { NSWorkspace.shared.urlForApplication(withBundleIdentifier:$0) }.first }
+        guard let url else {
             throw JustVibeRemoteError.message("Open the selected app first, or choose its application in JustVibe Remote.")
         }
+        // A remote press explicitly requests a foreground switch, including
+        // when another app is active. Basic NSRunningApplication.activate can
+        // leave an already-running target in the background in that case.
+        let options=NSWorkspace.OpenConfiguration()
+        options.activates=true;options.hides=false;options.createsNewApplicationInstance=false
+        options.allowsRunningApplicationSubstitution=false
+        openApplication(url,options) { error in completion?(error) }
     }
+
     func hold(_ text: String) throws {
         guard heldShortcut == nil else { return }
         let shortcut = try MacShortcut.parse(text)

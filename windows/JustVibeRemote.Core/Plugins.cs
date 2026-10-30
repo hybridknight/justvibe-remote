@@ -163,6 +163,35 @@ public sealed class PluginCatalog
 
 public static class PluginSelection
 {
+    public static (Configuration Config,int Applied,List<string> Skipped) ApplyActionToAllApps(Configuration config,int index,PluginCatalog catalog)
+    {
+        if(index<0||index>=config.Bindings.Count)throw new InvalidDataException("Select a remote button first.");
+        var source=config.Bindings[index];
+        if(source.Action==ActionKind.Focus&&source.LaunchApps==null&&source.LaunchAppID==null)
+        {
+            if(config.AppPluginID==Configuration.NoSpecificAppID)throw new InvalidDataException("Choose an app for Open app first.");
+            source=source with{LaunchAppID=config.AppPluginID};
+        }
+        var sets=new Dictionary<string,List<Binding>>(config.BindingSets);
+        var mappings=new Dictionary<string,AppMapping>(config.AppMappings);
+        var next=config with{BindingSets=sets,AppMappings=mappings};int applied=0;var skipped=new List<string>();
+        var profiles=new[]{(Id:Configuration.NoSpecificAppID,Name:"Shared controls",Actions:SharedActions.Plugin)}.Concat(catalog.Apps.Select(p=>(Id:p.Id,Name:p.Name,Actions:p.App!)));
+        foreach(var (id,name,actions) in profiles)
+        {
+            if(source.Action!=ActionKind.Focus&&!actions.Supports(source.Action)){skipped.Add(name);continue;}
+            var target=Select(config,catalog,config.DevicePluginID,id);
+            var bindings=target.Bindings.ToList();
+            int match=bindings.FindIndex(item=>source.ControlID!=null&&item.ControlID!=null?source.ControlID==item.ControlID:string.Equals(source.Name,item.Name,StringComparison.OrdinalIgnoreCase));
+            if(match>=0)bindings[match]=bindings[match] with{Action=source.Action,LaunchAppID=source.LaunchAppID,LaunchAppPath=source.LaunchAppPath,LaunchApps=source.LaunchApps?.ToList()};
+            else bindings.Add(source with{LaunchApps=source.LaunchApps?.ToList()});
+            target=target with{Bindings=bindings,DictationTested=false};
+            string key=AppRouting.Key(config.DevicePluginID,id);sets[key]=bindings.ToList();mappings[key]=AppMapping.From(target);
+            if(id==config.AppPluginID)next=next with{Bindings=bindings,DictationTested=false};
+            applied++;
+        }
+        next.Validate();return (next,applied,skipped);
+    }
+
     public static Configuration Select(Configuration config, PluginCatalog catalog, string deviceID, string appID)
     {
         var device = catalog.Find(deviceID, "device"); var app = appID==Configuration.NoSpecificAppID?null:catalog.Find(appID, "app");

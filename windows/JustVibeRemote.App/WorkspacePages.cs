@@ -83,7 +83,7 @@ internal sealed partial class MainWindow
         var remote=Card();remote.Margin=new Padding(0,0,12,0);remote.Controls.Add(canvas);progress.Dock=DockStyle.Bottom;progress.Height=36;progress.AutoSize=false;remote.Controls.Add(progress);columns.Controls.Add(remote,0,0);canvas.Selected+=SelectControl;
         var inspector=Card();var form=Stack();form.Dock=DockStyle.Fill;form.AutoSize=false;form.AutoScroll=true;form.Padding=new Padding(24);form.BackColor=Color.White;inspector.Controls.Add(form);columns.Controls.Add(inspector,1,0);
         form.Controls.Add(MakeLabel("REMOTE BUTTON",9,true));form.Controls.Add(bindingPicker);form.Controls.Add(selectedName);form.Controls.Add(linked);form.Controls.Add(hint);
-        learn=Button("Link this button",Learn,true);cancel=Button("Cancel",()=>controller.CancelLearning());cancel.Visible=false;form.Controls.Add(Row(learn,cancel));form.Controls.Add(learningHelp);form.Controls.Add(actionContext);form.Controls.Add(actionPicker);launchAppButton=Button("Choose app…",ChooseLaunchApp);form.Controls.Add(launchAppButton);form.Controls.Add(actionHelp);
+        learn=Button("Link this button",Learn,true);cancel=Button("Cancel",()=>controller.CancelLearning());cancel.Visible=false;form.Controls.Add(Row(learn,cancel));form.Controls.Add(learningHelp);form.Controls.Add(actionContext);form.Controls.Add(actionPicker);launchAppButton=Button("Choose apps…",ChooseLaunchApp);form.Controls.Add(launchAppButton);form.Controls.Add(actionHelp);form.Controls.Add(Button("Apply to all apps",()=>Try(()=>controller.ApplyActionToAllApps(selectedIndex))));
         voice.Controls.Add(Section("Voice setup"));voice.Controls.Add(Button("Test microphone…",TestMicrophone));voice.Controls.Add(microphoneStatus);voice.Controls.Add(Block("Match the shortcut configured in the selected app. Double-click the shortcut field to record it, or type it."));voice.Controls.Add(shortcut);voice.Controls.Add(Button("Save voice settings",SaveVoice));voice.Controls.Add(confirmed);voice.Controls.Add(toggle);voice.Controls.Add(Row(Button("Try dictation",TryVoice),Button("Locate app…",ChooseTarget)));form.Controls.Add(voice);
         form.Controls.Add(target);form.Controls.Add(Button("Advanced & app connection",()=>advanced.Visible=!advanced.Visible));advanced.Controls.Add(signal);advanced.Controls.Add(Block("Windows keeps native remote actions. Mapped actions run alongside them. Native typing is not suppressed."));advanced.Visible=false;form.Controls.Add(advanced);
         form.SizeChanged+=(_,_)=>{var width=Math.Max(120,form.ClientSize.Width-64);bindingPicker.Width=actionPicker.Width=width;shortcut.Width=Math.Min(320,width);foreach(var label in new[]{hint,learningHelp,actionHelp,target,signal,microphoneStatus})label.MaximumSize=new Size(width,0);voice.Width=width;voice.MaximumSize=new Size(width,0);};WorkspaceStyle.Apply(root);return root;
@@ -154,34 +154,46 @@ internal sealed partial class MainWindow
         var session=controller;int index=selectedIndex;
         var choices=session.Catalog.Apps.OrderBy(p=>p.Name,StringComparer.CurrentCultureIgnoreCase).ToArray();
         if(choices.Length==0){MessageBox.Show(this,"Add an app in Apps before assigning Open app.","Open app");RefreshState();return;}
-        using var dialog=new Form{Text="Open app",ClientSize=new Size(620,390),StartPosition=FormStartPosition.CenterParent,Font=WorkspaceStyle.Text(),BackColor=Color.White,AutoScaleMode=AutoScaleMode.Dpi};
+        using var dialog=new Form{Text="Open apps",ClientSize=new Size(620,590),StartPosition=FormStartPosition.CenterParent,Font=WorkspaceStyle.Text(),BackColor=Color.White,AutoScaleMode=AutoScaleMode.Dpi};
         var stack=WorkspaceStyle.Stack(564);stack.Dock=DockStyle.Fill;stack.AutoSize=false;stack.AutoScroll=true;stack.Padding=new Padding(28);dialog.Controls.Add(stack);
-        stack.Controls.Add(WorkspaceStyle.Label("Open app",18,true,true,550));stack.Controls.Add(WorkspaceStyle.Label($"Choose the app that {session.Config.Bindings[index].Name} opens. A running app is brought to the front.",10,false,false,550));
-        var picker=new ComboBox{DropDownStyle=ComboBoxStyle.DropDownList,Width=550,DisplayMember="Name",DataSource=choices,AccessibleName="App to open",Margin=new Padding(0,0,0,12)};
-        var binding=session.Config.Bindings[index];picker.SelectedItem=choices.FirstOrDefault(p=>p.Id==(binding.LaunchAppID??session.Config.AppPluginID))??choices[0];
-        var location=WorkspaceStyle.Label("",9,false,false,550);string path="";
-        void LoadLocation()
+        stack.Controls.Add(WorkspaceStyle.Label("Open apps",18,true,true,550));stack.Controls.Add(WorkspaceStyle.Label($"Select apps for {session.Config.Bindings[index].Name}. Each press opens the next checked app, from top to bottom, then starts again. A running app is brought to the front.",10,false,false,550));
+        var binding=session.Config.Bindings[index];
+        var saved=binding.LaunchApps??[new LaunchApp(binding.LaunchAppID??session.Config.AppPluginID,binding.LaunchAppPath)];
+        var ordered=saved.Select(t=>choices.FirstOrDefault(p=>p.Id==t.Id)).OfType<PluginManifest>().Concat(choices.Where(p=>!saved.Any(t=>t.Id==p.Id))).ToArray();
+        var picker=new CheckedListBox{Width=550,Height=220,CheckOnClick=true,DisplayMember="Name",AccessibleName="Apps to open in order"};
+        foreach(var app in ordered)picker.Items.Add(app,saved.Any(t=>t.Id==app.Id));
+        var paths=saved.ToDictionary(t=>t.Id,t=>t.Path??"");
+        var location=WorkspaceStyle.Label("",9,false,false,550);
+        string CurrentPath(PluginManifest app)
         {
-            var app=(PluginManifest)picker.SelectedItem!;
-            path=app.Id==binding.LaunchAppID?binding.LaunchAppPath??"":"";
+            string path=paths.GetValueOrDefault(app.Id)??"";
             if(path.Length==0)path=app.Id==session.Config.AppPluginID?session.Config.TargetAppPath:session.Config.AppMappings.GetValueOrDefault(AppRouting.Key(session.Config.DevicePluginID,app.Id))?.TargetAppPath??"";
-            if(path.Length==0)path=TargetOutput.RunningPath(app);
-            location.Text=path.Length>0?path:"Locate this app’s .exe so the button can launch it when it is closed.";
+            return path.Length>0?path:TargetOutput.RunningPath(app);
         }
-        bool Locate()
+        bool Locate(PluginManifest app)
         {
-            using var file=new OpenFileDialog{Filter="Windows application (*.exe)|*.exe",Title="Locate "+((PluginManifest)picker.SelectedItem!).Name,CheckFileExists=true};
+            using var file=new OpenFileDialog{Filter="Windows application (*.exe)|*.exe",Title="Locate "+app.Name,CheckFileExists=true};
             if(file.ShowDialog(dialog)!=DialogResult.OK)return false;
-            path=Path.GetFullPath(file.FileName);location.Text=path;return true;
+            paths[app.Id]=Path.GetFullPath(file.FileName);location.Text=paths[app.Id];return true;
         }
-        picker.SelectedIndexChanged+=(_,_)=>LoadLocation();LoadLocation();stack.Controls.Add(picker);stack.Controls.Add(location);stack.Controls.Add(Button("Locate app…",()=>Locate()));
+        picker.SelectedIndexChanged+=(_,_)=>{if(picker.SelectedItem is PluginManifest app){var path=CurrentPath(app);location.Text=path.Length>0?path:"Locate this app’s .exe so it can open when closed.";}};
+        stack.Controls.Add(picker);stack.Controls.Add(location);stack.Controls.Add(Button("Locate selected app…",()=>{if(picker.SelectedItem is PluginManifest app)Locate(app);}));
         stack.Controls.Add(Row(Button("Cancel",()=>dialog.DialogResult=DialogResult.Cancel),Button("Save Action",()=>{
-            if((!File.Exists(path)||!path.EndsWith(".exe",StringComparison.OrdinalIgnoreCase))&&!Locate())return;
-            try{var bindings=session.Config.Bindings.ToList();bindings[index]=bindings[index] with{Action=ActionKind.Focus,LaunchAppID=((PluginManifest)picker.SelectedItem!).Id,LaunchAppPath=path};session.Update(session.Config with{Bindings=bindings});dialog.DialogResult=DialogResult.OK;}
-            catch(Exception error){MessageBox.Show(dialog,error.Message,"Open app");}
+            var selected=picker.CheckedItems.Cast<PluginManifest>().ToArray();
+            if(selected.Length is <1 or >64){MessageBox.Show(dialog,"Select between 1 and 64 apps.","Open apps");return;}
+            var targets=new List<LaunchApp>();
+            foreach(var app in selected)
+            {
+                string path=CurrentPath(app);
+                if(!File.Exists(path)||!path.EndsWith(".exe",StringComparison.OrdinalIgnoreCase)){if(!Locate(app))return;path=paths[app.Id];}
+                targets.Add(new(app.Id,path));
+            }
+            try{var bindings=session.Config.Bindings.ToList();bindings[index]=bindings[index] with{Action=ActionKind.Focus,LaunchAppID=targets[0].Id,LaunchAppPath=targets[0].Path,LaunchApps=targets.Count>1?targets:null};session.Update(session.Config with{Bindings=bindings});dialog.DialogResult=DialogResult.OK;}
+            catch(Exception error){MessageBox.Show(dialog,error.Message,"Open apps");}
         },true)));WorkspaceStyle.Apply(dialog);
         dialog.ShowDialog(this);RefreshState();
     }
+
     private void ConnectionCheck()
     {
         var count=NativeInput.Discover().Count(path=>ReceiverDecoder.Matches(path,controller.Config.Profile));

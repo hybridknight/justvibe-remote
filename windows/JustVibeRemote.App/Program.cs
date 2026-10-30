@@ -41,10 +41,13 @@ internal sealed partial class MainWindow:Form
         controller=sessions.Initial??(verificationSettings==null?new RemoteController():new RemoteController(new ConfigurationStore(Path.Combine(verificationSettings,"settings.json"))));
         Text="JustVibe Remote";ClientSize=new Size(1380,940);MinimumSize=new Size(1200,840);StartPosition=FormStartPosition.CenterScreen;
         Font=WorkspaceStyle.Text();BackColor=Palette.Background;AutoScaleMode=AutoScaleMode.Dpi;KeyPreview=true;
+        // These selectors also refresh while their page is detached. Give them
+        // a stable binding context before assigning data or selecting an item.
+        foreach(var picker in new[]{devices,apps,bindingPicker,actionPicker})picker.BindingContext=BindingContext;
         BuildWorkspace();PopulatePlugins();LoadEditable();
         devices.SelectedIndexChanged+=(_,_)=>SelectPlugins();apps.SelectedIndexChanged+=(_,_)=>SelectPlugins();
         bindingPicker.SelectedIndexChanged+=(_,_)=>{if(loading||bindingPicker.SelectedIndex<0)return;selectedIndex=bindingPicker.SelectedIndex;controller.CancelLearning();RefreshState();};
-        actionPicker.SelectionChangeCommitted+=(_,_)=>{if(loading||actionPicker.SelectedItem is not ActionChoice choice)return;if(choice.Action==ActionKind.Focus){ChooseLaunchApp();return;}Try(()=>{var bindings=controller.Config.Bindings.ToList();bindings[selectedIndex]=bindings[selectedIndex] with{Action=choice.Action,LaunchAppID=null,LaunchAppPath=null};controller.Update(controller.Config with{Bindings=bindings});});};
+        actionPicker.SelectionChangeCommitted+=(_,_)=>{if(loading||actionPicker.SelectedItem is not ActionChoice choice)return;if(choice.Action==ActionKind.Focus){ChooseLaunchApp();return;}Try(()=>{var bindings=controller.Config.Bindings.ToList();bindings[selectedIndex]=bindings[selectedIndex] with{Action=choice.Action,LaunchAppID=null,LaunchAppPath=null,LaunchApps=null};controller.Update(controller.Config with{Bindings=bindings});});};
         followApp.CheckedChanged+=(_,_)=>{if(!loading)Try(()=>controller.Update(controller.Config with{FollowActiveApp=followApp.Checked}));};
         sessions.Changed+=RefreshState;
         Shown+=(_,_)=>{if(verificationSettings==null)sessions.Activate();ShowPage(WorkspacePage.Remotes);};
@@ -77,6 +80,7 @@ internal sealed partial class MainWindow:Form
         learningHelp.Text=learning?$"Press only {binding.Name} on your physical remote. JustVibe Remote won’t run your saved action while learning.":"Learning identifies a button’s signal. It doesn’t trigger its assigned action.";
         var actionChoices=controller.AvailableActions.Select(action=>new ActionChoice(action,ActionTitle(action))).ToList();actionPicker.DisplayMember="Title";actionPicker.DataSource=actionChoices;actionPicker.SelectedItem=actionChoices.FirstOrDefault(choice=>choice.Action==binding.Action);actionHelp.Text=binding.Action==ActionKind.Native?"Keeps the remote’s normal behavior. Choose an action to personalize it.":binding.Usage==null?"Action selected. Learn this button to activate the mapping.":$"Saved for {controller.AppPlugin?.Name??"this app"}. Other app profiles keep their own actions.";
         if(binding.Action==ActionKind.Focus)actionHelp.Text=$"Open {controller.Catalog.Apps.FirstOrDefault(p=>p.Id==(binding.LaunchAppID??controller.Config.AppPluginID))?.Name??"an unavailable app"} when you press {binding.Name}. A running app is brought to the front."+(binding.Usage==null?" Link this button first.":"");
+        if(binding.Action==ActionKind.Focus&&binding.LaunchApps is {Count:>1} targets)actionHelp.Text="Cycle on each press: "+string.Join(" → ",targets.Select(t=>controller.Catalog.Apps.FirstOrDefault(p=>p.Id==t.Id)?.Name??"Unavailable app"))+" → repeat.";
         microphoneStatus.Text=controller.MicrophoneSummary;
         voice.Visible=binding.Action==ActionKind.Dictate&&controller.AppPlugin?.App?.Supports(ActionKind.Dictate)==true;signal.Text=binding.Usage is Usage u?$"Button signal: {u}":"Button signal: not learned";
         target.Text=controller.Config.TargetAppPath.Length==0?$"App connection: use the running {controller.AppPlugin?.Name??"selected app"}.":$"App connection: {Path.GetFileName(controller.Config.TargetAppPath)}";

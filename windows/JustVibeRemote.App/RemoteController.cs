@@ -5,6 +5,7 @@ namespace JustVibeRemote;
 
 internal sealed class RemoteController
 {
+    private readonly AppLaunchCycle launchCycle=new();
     public ConfigurationStore Store { get; }
     private readonly string pluginDirectory;
     public Action? ValidateStart, Stopped, ReleaseVoice;
@@ -132,6 +133,13 @@ internal sealed class RemoteController
         if (restart) Start();
         Changed?.Invoke();
     }
+    public void ApplyActionToAllApps(int index)
+    {
+        var result=PluginSelection.ApplyActionToAllApps(Config,index,Catalog);
+        Update(result.Config);
+        Status=$"Applied to {result.Applied} app profiles on this remote."+(result.Skipped.Count==0?"":" Unsupported action in: "+string.Join(", ",result.Skipped)+".");
+        Changed?.Invoke();
+    }
     public void SaveSetup(RemoteSetupCheckpoint checkpoint,bool? completed=null){var next=Config with{RemoteSetupCheckpoint=checkpoint,RemoteSetupCompleted=completed??Config.RemoteSetupCompleted};Store.Save(next);Config=next;Changed?.Invoke();}
     public void SelectPlugins(string deviceID, string appID)
     {
@@ -199,7 +207,7 @@ internal sealed class RemoteController
             else if (down && match.Action == ActionKind.Focus)
             {
                 FinishVoice();if(VoiceActive)throw new InvalidOperationException("Stop voice input before opening another app.");
-                var target=AppRouting.LaunchTarget(match,Config,route,Catalog.Apps);
+                var target=launchCycle.Next(match,Config,route,Catalog.Apps);
                 new TargetOutput{Plugin=Catalog.Find(target.AppPluginID,"app").App}.Show(target);
                 Status="Opening "+Catalog.Find(target.AppPluginID,"app").Name;Changed?.Invoke();
             }

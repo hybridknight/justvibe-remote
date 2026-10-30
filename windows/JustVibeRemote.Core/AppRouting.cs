@@ -68,3 +68,19 @@ public static class AppRouting
         return winners.Count==1?winners[0].Config:null;
     }
 }
+
+/// Session-only position, independent of foreground routing and editor selection.
+public sealed class AppLaunchCycle
+{
+    private readonly Dictionary<string,int> positions=[];
+    public Configuration Next(Binding binding,Configuration config,Configuration route,IEnumerable<PluginManifest> apps)
+    {
+        if(binding.LaunchApps is not {} targets)return AppRouting.LaunchTarget(binding,config,route,apps);
+        if(targets.Count is <1 or >64||targets.Select(t=>t.Id).Distinct().Count()!=targets.Count)throw new InvalidDataException("Choose between 1 and 64 different apps for this button.");
+        string key=config.DevicePluginID+"|"+(binding.ControlID??binding.Usage?.ToString()??binding.Name)+"|"+System.Text.Json.JsonSerializer.Serialize(targets);
+        int index=positions.GetValueOrDefault(key)%targets.Count;
+        var target=AppRouting.LaunchTarget(binding with{LaunchAppID=targets[index].Id,LaunchAppPath=targets[index].Path,LaunchApps=null},config,route,apps);
+        positions[key]=(index+1)%targets.Count;
+        return target;
+    }
+}

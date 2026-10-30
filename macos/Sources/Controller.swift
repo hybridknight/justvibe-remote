@@ -1,6 +1,7 @@
 import AppKit
 
 final class RemoteController {
+    private var launchCycle=AppLaunchCycle()
     let store: ConfigurationStore
     let artwork: RemoteArtworkStore
     private let sessionDeviceID: String?
@@ -350,6 +351,12 @@ final class RemoteController {
         if restart { start() }
         changed?()
     }
+    func applyActionToAllApps(at index:Int) throws {
+        let result=try PluginSelection.applyActionToAllApps(config,index:index,catalog:catalog)
+        try update(result.config)
+        status="Applied to \(result.applied) app profiles on this remote." + (result.skipped.isEmpty ? "":" Unsupported action in: " + result.skipped.joined(separator:", ") + ".")
+        changed?()
+    }
     func setArtwork(from url:URL) throws { try artwork.importImage(from:url);changed?() }
     func resetArtwork() throws { try artwork.reset();changed?() }
     /// Saving presentation progress must not restart this receiver or affect
@@ -461,7 +468,7 @@ final class RemoteController {
             if binding.action == .focus {
                 finishVoice()
                 guard !voiceActive && !output.hasVoiceOutput else { throw JustVibeRemoteError.message("Stop voice input before opening another app.") }
-                let target=try AppRouting.launchTarget(binding,config:config,route:route,apps:catalog.apps)
+                let target=try launchCycle.next(binding,config:config,route:route,apps:catalog.apps)
                 let launcher=TargetOutput();launcher.plugin=try catalog.find(target.appPluginID,kind:"app").app
                 let name=(try? catalog.find(target.appPluginID,kind:"app"))?.name ?? "app"
                 status="Opening \(name)";changed?()

@@ -46,6 +46,10 @@ enum RemoteAction: String, Codable, CaseIterable {
         }
     }
 }
+struct LaunchApp: Codable, Equatable {
+    var id: String
+    var path: String? = nil
+}
 struct Binding: Codable, Equatable {
     var name: String
     var usage: Usage?
@@ -53,6 +57,7 @@ struct Binding: Codable, Equatable {
     var controlID: String?
     var launchAppID: String? = nil
     var launchAppPath: String? = nil
+    var launchApps: [LaunchApp]? = nil
     static var initial: [Binding] {
         [Binding(name: "Microphone", action: .dictate),
          Binding(name: "Power", action: .native),

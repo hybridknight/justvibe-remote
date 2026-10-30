@@ -119,7 +119,7 @@ private final class MappingCard:NSView {
         name.contentTintColor=live ? .systemTeal:selected ? .rvAccent:.rvInk
         name.setAccessibilityValue(selected ? "Selected":"")
         let titles=actions.map { action in
-            action == .focus && binding?.action == .focus ? "Open app · \(launchAppName ?? "Choose app…")" : action == .dictate && !dictationShortcut.isEmpty ? "Dictation · \(dictationShortcut)" : action.title
+            action == .focus && binding?.action == .focus ? ((binding?.launchApps?.count ?? 0) > 1 ? "Cycle apps · \(binding!.launchApps!.count) apps" : "Open app · \(launchAppName ?? "Choose app…")") : action == .dictate && !dictationShortcut.isEmpty ? "Dictation · \(dictationShortcut)" : action.title
         }
         if menuTitles != titles { self.actions=actions;menuTitles=titles;picker.removeAllItems();picker.addItems(withTitles:titles) }
         picker.selectItem(at:actions.firstIndex(of:binding?.action ?? .native) ?? 0)

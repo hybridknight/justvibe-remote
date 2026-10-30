@@ -12,6 +12,7 @@ internal static class WorkspaceVerification
         try
         {
             using var window=new MainWindow(settings);
+            window.VerifyPickerState();
             window.Show();Application.DoEvents();
             images=window.VerifyWorkspace(output);
             File.WriteAllText(Path.Combine(output,"verification.json"),JsonSerializer.Serialize(new{passed=true,images,os=Environment.OSVersion.ToString(),architecture=System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture.ToString(),dpi=window.DeviceDpi,deviceTests=false,audioCapture=false,notes="Isolated temporary settings; no receiver started, no shortcuts sent, no audio capture. Test hardware and cross-app focus separately."},ConfigurationStore.Json));
@@ -28,15 +29,31 @@ internal static class WorkspaceVerification
 }
 internal sealed partial class MainWindow
 {
+    internal void VerifyPickerState()
+    {
+        if(bindingPicker.Items.Count!=controller.Config.Bindings.Count||bindingPicker.SelectedIndex!=selectedIndex)
+            throw new InvalidOperationException("Button picker lost its items or selection while its page was hidden.");
+        if(actionPicker.Items.Count!=controller.AvailableActions.Length||actionPicker.SelectedItem is not ActionChoice choice||choice.Action!=controller.Config.Bindings[selectedIndex].Action)
+            throw new InvalidOperationException("Action picker does not match the selected button.");
+        if(apps.Items.Count!=controller.Catalog.Apps.Count()+1||apps.SelectedItem is not PluginManifest app||app.Id!=controller.Config.AppPluginID)
+            throw new InvalidOperationException("App picker lost its items or selected profile.");
+        if(devices.SelectedItem is not PluginManifest device||device.Id!=controller.Config.DevicePluginID)
+            throw new InvalidOperationException("Remote picker lost its selected receiver.");
+    }
     internal int VerifyWorkspace(string output)
     {
         int images=0;
+        // Select a non-default button before visiting pages that detach its picker.
+        int expectedBinding=Math.Min(1,controller.Config.Bindings.Count-1);
+        bindingPicker.SelectedIndex=expectedBinding;
         foreach(var compact in new[]{false,true})
         {
             ClientSize=compact?new Size(1200,840):new Size(1380,940);
             foreach(var page in Enum.GetValues<WorkspacePage>())
             {
                 ShowPage(page);PerformLayout();Application.DoEvents();
+                VerifyPickerState();
+                if(selectedIndex!=expectedBinding)throw new InvalidOperationException("Page navigation reset the selected button.");
                 if(pageTitle.Text!=Title(page))throw new InvalidOperationException("Wrong page heading: "+page);
                 if(!pageTitle.Font.FontFamily.Name.Contains("Manrope"))throw new InvalidOperationException("Bundled heading font failed to load.");
                 if(!apps.Font.FontFamily.Name.Contains("Inter"))throw new InvalidOperationException("Bundled control font failed to load.");

@@ -637,6 +637,75 @@ import Foundation
         let launchSwitched=try PluginSelection.select(launcherConfig,catalog:catalog,deviceID:launcherConfig.devicePluginID,appID:chosenID)
         let launchRestored=try PluginSelection.select(launchSwitched,catalog:catalog,deviceID:launcherConfig.devicePluginID,appID:Configuration.noSpecificAppID)
         check(launchRestored.bindings.contains(where:{$0.launchAppID == chosenID && $0.action == .focus}),"Open app choice survives app-profile switching")
+        let backgroundLauncher=TargetOutput()
+        var openRequests=0,reportedOpenFailure=false,reportedOpenSuccess=false
+        backgroundLauncher.openApplication={ url,options,completion in
+            openRequests += 1
+            check(url.path == "/Applications/LaunchRegressionFixture.app","opening uses the selected app URL")
+            check(options.activates && !options.hides,"open requests explicitly bring the target to the foreground")
+            check(!options.createsNewApplicationInstance && !options.allowsRunningApplicationSubstitution,"opening reuses the intended app without substituting a different location")
+            completion(NSError(domain:"LaunchRegressionFixture",code:1))
+        }
+        var openFixture=launcherConfig;openFixture.appPluginID=chosenID;openFixture.targetAppPath="/Applications/LaunchRegressionFixture.app"
+        try backgroundLauncher.show(openFixture) { reportedOpenFailure=$0 != nil }
+        check(openRequests == 1 && reportedOpenFailure,"launcher reports workspace failures instead of unconditional success")
+        backgroundLauncher.openApplication={ _,_,completion in openRequests += 1;completion(nil) }
+        try backgroundLauncher.show(openFixture) { reportedOpenSuccess=$0 == nil }
+        check(reportedOpenSuccess,"launcher forwards successful workspace completion")
+        try backgroundLauncher.show(launcherConfig)
+        check(openRequests == 2,"shared profile never opens an arbitrary app")
+        let secondLaunchID=catalog.apps.first(where:{$0.id != chosenID})!.id
+        var cycling=launchBinding;cycling.launchApps=[LaunchApp(id:chosenID,path:"/Applications/First.app"),LaunchApp(id:secondLaunchID)]
+        var cycle=AppLaunchCycle()
+        check(try cycle.next(cycling,config:launcherConfig,route:launcherConfig,apps:catalog.apps).targetAppPath == "/Applications/First.app","cycle honors each target's explicit location")
+        check(try cycle.next(cycling,config:launcherConfig,route:legacyProfile,apps:catalog.apps).appPluginID == secondLaunchID,"cycle advances across foreground profile changes")
+        check(try cycle.next(cycling,config:launcherConfig,route:launcherConfig,apps:catalog.apps).appPluginID == chosenID,"cycle wraps to first app")
+        var otherButton=cycling;otherButton.controlID="home"
+        check(try cycle.next(otherButton,config:launcherConfig,route:launcherConfig,apps:catalog.apps).appPluginID == chosenID,"buttons cycle independently")
+        var otherRemote=launcherConfig;otherRemote.devicePluginID="another.remote"
+        check(try cycle.next(cycling,config:otherRemote,route:otherRemote,apps:catalog.apps).appPluginID == chosenID,"remotes cycle independently")
+        var restarted=AppLaunchCycle()
+        check(try restarted.next(cycling,config:launcherConfig,route:launcherConfig,apps:catalog.apps).appPluginID == chosenID,"new session starts at first app")
+        check(try JSONDecoder().decode(Binding.self,from:JSONEncoder().encode(cycling)) == cycling,"ordered cycle and per-app paths persist")
+        launcherConfig.bindings[launchIndex]=cycling
+        let cycleSwitched=try PluginSelection.select(launcherConfig,catalog:catalog,deviceID:launcherConfig.devicePluginID,appID:chosenID)
+        let cycleRestored=try PluginSelection.select(cycleSwitched,catalog:catalog,deviceID:launcherConfig.devicePluginID,appID:Configuration.noSpecificAppID)
+        check(cycleRestored.bindings.contains(where:{$0.launchApps == cycling.launchApps}),"cycle survives profile switching")
+        var invalidCycle=cycling;invalidCycle.launchApps=[]
+        do { _=try cycle.next(invalidCycle,config:launcherConfig,route:launcherConfig,apps:catalog.apps);check(false,"empty cycle rejected") } catch { check(true,"empty cycle rejected") }
+        invalidCycle.launchApps=[LaunchApp(id:chosenID),LaunchApp(id:chosenID)]
+        do { _=try cycle.next(invalidCycle,config:launcherConfig,route:launcherConfig,apps:catalog.apps);check(false,"duplicate cycle rejected") } catch { check(true,"duplicate cycle rejected") }
+        invalidCycle.launchApps=[LaunchApp(id:"missing.app")]
+        do { _=try cycle.next(invalidCycle,config:launcherConfig,route:launcherConfig,apps:catalog.apps);check(false,"missing cycle app rejected") } catch { check(true,"missing cycle app rejected without fallback") }
+        var broadcast=launcherConfig;broadcast.bindings[launchIndex]=cycling
+        let broadcastOtherRemoteKey=AppRouting.key("other.remote",chosenID)
+        let untouchedRemote=AppMapping(legacyProfile);broadcast.appMappings[broadcastOtherRemoteKey]=untouchedRemote
+        let broadcastResult=try PluginSelection.applyActionToAllApps(broadcast,index:launchIndex,catalog:catalog)
+        check(broadcastResult.applied == catalog.apps.count+1 && broadcastResult.skipped.isEmpty,"Open app can be applied to all installed app profiles and shared controls")
+        check(broadcastResult.config.appPluginID == broadcast.appPluginID && broadcastResult.config.shortcut == broadcast.shortcut,"applying all keeps the editor profile and its settings")
+        check(broadcastResult.config.appMappings[broadcastOtherRemoteKey]?.bindings == untouchedRemote.bindings,"applying all leaves other remotes untouched")
+        for appID in catalog.apps.map(\.id)+[Configuration.noSpecificAppID] {
+            let profile=try PluginSelection.select(broadcastResult.config,catalog:catalog,deviceID:broadcast.devicePluginID,appID:appID)
+            let copied=profile.bindings.first(where:{$0.controlID == cycling.controlID})!
+            check(copied.action == .focus && copied.launchApps == cycling.launchApps,"every profile receives the same app cycle and locations")
+            let before=try PluginSelection.select(broadcast,catalog:catalog,deviceID:broadcast.devicePluginID,appID:appID)
+            check(zip(profile.bindings,before.bindings).allSatisfy { after,old in after.controlID == cycling.controlID || after == old },"applying one action preserves unrelated buttons")
+        }
+        var appView=try PluginSelection.select(broadcastResult.config,catalog:catalog,deviceID:broadcast.devicePluginID,appID:chosenID);appView.followActiveApp=true
+        let chromeLaunch=AppRouting.resolve(appView,apps:catalog.apps,foreground:ForegroundApp(bundleID:"com.google.Chrome",name:"Chrome",path:"/Applications/Google Chrome.app",instance:"chrome"))
+        check(chromeLaunch?.bindings.contains(where:{$0.controlID == cycling.controlID && $0.launchApps == cycling.launchApps}) == true,"all-app Open app action is available while Chrome is focused")
+        var dictationCopy=perApp;dictationCopy.bindings[0].action = .dictate
+        let dictationResult=try PluginSelection.applyActionToAllApps(dictationCopy,index:0,catalog:catalog)
+        check(dictationResult.skipped.contains("Shared controls"),"app dictation is never copied into shared controls without a shortcut")
+        for plugin in catalog.apps where plugin.app?.supports(.dictate) == true {
+            let before=try PluginSelection.select(dictationCopy,catalog:catalog,deviceID:dictationCopy.devicePluginID,appID:plugin.id)
+            let after=dictationResult.config.appMappings[AppRouting.key(dictationCopy.devicePluginID,plugin.id)]!
+            check(after.shortcut == before.shortcut && after.shortcutConfirmed == before.shortcutConfirmed && after.voiceMode == before.voiceMode && after.targetAppPath == before.targetAppPath,"bulk dictation preserves each app's own shortcut, confirmation, mode, and location")
+        }
+        var legacyAll=legacyProfile;legacyAll.bindings=[legacyLaunch]
+        let legacyAllResult=try PluginSelection.applyActionToAllApps(legacyAll,index:0,catalog:catalog)
+        check(legacyAllResult.config.appMappings[AppRouting.key(legacyAll.devicePluginID,Configuration.noSpecificAppID)]?.bindings.contains(where:{$0.launchAppID == chosenID}) == true,"bulk legacy Show app pins the original app identity")
+        do { _=try PluginSelection.applyActionToAllApps(broadcast,index:-1,catalog:catalog);check(false,"invalid bulk selection rejected") } catch { check(true,"invalid bulk selection rejected") }
         print("JustVibe Remote macOS: \(count) checks passed")
     }
 }

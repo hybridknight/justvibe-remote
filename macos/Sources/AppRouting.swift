@@ -143,3 +143,22 @@ enum AppRouting {
     }
 
 }
+
+/// Session-only position: foreground routing and editor changes never write it to disk.
+struct AppLaunchCycle {
+    private var positions: [String:Int] = [:]
+    mutating func next(_ binding:Binding,config:Configuration,route:Configuration,apps:[PluginManifest]) throws -> Configuration {
+        guard let targets=binding.launchApps else { return try AppRouting.launchTarget(binding,config:config,route:route,apps:apps) }
+        guard !targets.isEmpty,targets.count <= 64,Set(targets.map(\.id)).count == targets.count else {
+            throw JustVibeRemoteError.message("Choose between 1 and 64 different apps for this button.")
+        }
+        let encoder=JSONEncoder();encoder.outputFormatting = .sortedKeys
+        let signature=String(decoding:try encoder.encode(targets),as:UTF8.self)
+        let key=config.devicePluginID + "|" + (binding.controlID ?? binding.usage?.label ?? binding.name) + "|" + signature
+        let index=(positions[key] ?? 0) % targets.count
+        var selected=binding;selected.launchAppID=targets[index].id;selected.launchAppPath=targets[index].path;selected.launchApps=nil
+        let target=try AppRouting.launchTarget(selected,config:config,route:route,apps:apps)
+        positions[key]=(index+1) % targets.count
+        return target
+    }
+}
