@@ -4,7 +4,7 @@ using JustVibeRemote.Core;
 
 namespace JustVibeRemote;
 
-internal sealed class NativeInput : NativeWindow, IDisposable
+internal sealed class NativeInput : IDisposable
 {
     private readonly DeviceProfile profile;
     private readonly ReceiverDecoder decoder;
@@ -17,10 +17,7 @@ internal sealed class NativeInput : NativeWindow, IDisposable
     public NativeInput(DeviceProfile profile)
     {
         profile.Validate(); this.profile = profile; decoder = new(profile);
-        CreateHandle(new CreateParams { Caption = "JustVibeRemote.Input", Parent = new nint(-3) });
-        RawDevice[] registrations = [new(1, 6, 0x100 | 0x2000, Handle), new(12, 1, 0x100 | 0x2000, Handle), new(1, 0x80, 0x100 | 0x2000, Handle)];
-        if (!RegisterRawInputDevices(registrations, (uint)registrations.Length, (uint)Marshal.SizeOf<RawDevice>()))
-        { DestroyHandle(); throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error()); }
+        hub??=new InputWindow();listeners.Add(this);
         RefreshDevices();
     }
     public void RefreshDevices()
@@ -37,20 +34,49 @@ internal sealed class NativeInput : NativeWindow, IDisposable
         if (removed) { decoder.Clear(); Disconnected?.Invoke(); }
         DevicesChanged?.Invoke(receivers.Count);
     }
-    protected override void WndProc(ref Message message)
+    // Raw Input permits one target window per usage in a process. All receivers share it.
+    private static readonly List<NativeInput> listeners=[];
+    private static InputWindow? hub;
+    private sealed class InputWindow:NativeWindow,IDisposable
     {
-        try
+        public InputWindow()
         {
-            if (message.Msg == 0xFE)
-            {
-                if (message.WParam == 2 && receivers.Contains(message.LParam))
-                { receivers.Remove(message.LParam); RemoveReader(message.LParam); decoder.Clear(); Disconnected?.Invoke(); }
-                RefreshDevices();
-            }
-            if (message.Msg == 0xFF) Read(message.LParam);
+            CreateHandle(new CreateParams{Caption="JustVibeRemote.Input",Parent=new nint(-3)});
+            RawDevice[] registrations=[new(1,6,0x100|0x2000,Handle),new(12,1,0x100|0x2000,Handle),new(1,0x80,0x100|0x2000,Handle)];
+            if(!RegisterRawInputDevices(registrations,(uint)registrations.Length,(uint)Marshal.SizeOf<RawDevice>()))
+            {DestroyHandle();throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());}
         }
-        catch (Exception error) { Error?.Invoke(error.Message); }
-        base.WndProc(ref message);
+        protected override void WndProc(ref Message message)
+        {
+            foreach(var listener in listeners.ToArray())
+            {
+                try
+                {
+                    if(message.Msg==0xFE)
+                    {
+                        if(message.WParam==2&&listener.receivers.Remove(message.LParam)){listener.RemoveReader(message.LParam);listener.decoder.Clear();listener.Disconnected?.Invoke();}
+                        listener.RefreshDevices();
+                    }
+                    if(message.Msg==0xFF)listener.Read(message.LParam);
+                }
+                catch(Exception error){listener.Error?.Invoke(error.Message);}
+            }
+            base.WndProc(ref message);
+        }
+        public void Dispose()
+        {
+            RawDevice[] remove=[new(1,6,1,0),new(12,1,1,0),new(1,0x80,1,0)];
+            RegisterRawInputDevices(remove,(uint)remove.Length,(uint)Marshal.SizeOf<RawDevice>());
+            DestroyHandle();
+        }
+    }
+    public static string[] Discover()
+    {
+        uint count=0;
+        if(GetRawInputDeviceList(null,ref count,(uint)Marshal.SizeOf<DeviceEntry>())==uint.MaxValue||count>4096)return [];
+        var list=new DeviceEntry[count];
+        if(GetRawInputDeviceList(list,ref count,(uint)Marshal.SizeOf<DeviceEntry>())==uint.MaxValue)return [];
+        return list.Take((int)count).Select(d=>DeviceName(d.Device)).Where(n=>n.Length>0).Distinct().ToArray();
     }
     private void Read(nint token)
     {
@@ -112,11 +138,10 @@ internal sealed class NativeInput : NativeWindow, IDisposable
     }
     public void Dispose()
     {
-        RawDevice[] remove = [new(1, 6, 1, 0), new(12, 1, 1, 0), new(1, 0x80, 1, 0)];
-        RegisterRawInputDevices(remove, (uint)remove.Length, (uint)Marshal.SizeOf<RawDevice>());
-        foreach (var reader in reportReaders.Values) reader?.Dispose();
-        reportReaders.Clear(); receivers.Clear();
-        DestroyHandle(); decoder.Clear();
+        if(!listeners.Remove(this))return;
+        foreach(var reader in reportReaders.Values)reader?.Dispose();
+        reportReaders.Clear();receivers.Clear();decoder.Clear();
+        if(listeners.Count==0){hub?.Dispose();hub=null;}
     }
     [StructLayout(LayoutKind.Sequential)] private readonly record struct RawDevice(ushort Page, ushort Usage, uint Flags, nint Target);
     [StructLayout(LayoutKind.Sequential)] private struct DeviceEntry { public nint Device; public uint Type; }

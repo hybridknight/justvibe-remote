@@ -54,10 +54,16 @@ internal sealed class TargetOutput
         }
         return found;
     }
+    public static string RunningPath(PluginManifest app)
+    {
+        try{using var process=new TargetOutput{Plugin=app.App}.FindTarget(new Configuration{AppPluginID=app.Id});return process?.MainModule?.FileName??"";}
+        catch(Exception error) when(error is Win32Exception or InvalidOperationException){return "";}
+    }
     public bool IsTargetFrontmost(Configuration config)
     {
         var front=Foreground();
         if(front==null)return false;
+        if(config.AppPluginID==Configuration.NoSpecificAppID)return config.TargetInstance.Length>0&&config.TargetInstance==front.Instance;
         if(config.TargetAppPath.Length>0)return front.Path.Length>0&&string.Equals(front.Path,config.TargetAppPath,StringComparison.OrdinalIgnoreCase);
         return Plugin?.Targets.GetValueOrDefault("windows")?.Names.Contains(front.Name,StringComparer.OrdinalIgnoreCase)==true;
     }
@@ -98,6 +104,7 @@ internal sealed class TargetOutput
         }
         if (failure != null) throw failure;
     }
+    public void TapShortcut(string shortcut){Hold(shortcut);Release();}
     public void Tap(ActionKind action)
     {
         if (Plugin == null) throw new InvalidOperationException("Select an app plugin first");

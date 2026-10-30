@@ -57,8 +57,8 @@ final class AppDropPlaceholder:NSButton {
         outline.stroke()
         let title=active ? "Drop to add this app":"Drop an app here"
         let subtitle="Drag from Finder, or click to choose an app."
-        let titleStyle:[NSAttributedString.Key:Any]=[.font:NSFont.systemFont(ofSize:14,weight:.semibold),.foregroundColor:NSColor.rvAccent]
-        let subtitleStyle:[NSAttributedString.Key:Any]=[.font:NSFont.systemFont(ofSize:12),.foregroundColor:NSColor.rvMuted]
+        let titleStyle:[NSAttributedString.Key:Any]=[.font:WorkspaceTypography.body(14,weight:.semibold),.foregroundColor:NSColor.rvAccent]
+        let subtitleStyle:[NSAttributedString.Key:Any]=[.font:WorkspaceTypography.body(12),.foregroundColor:NSColor.rvMuted]
         let textWidth=max((title as NSString).size(withAttributes:titleStyle).width,(subtitle as NSString).size(withAttributes:subtitleStyle).width)
         let left=(bounds.width-textWidth-58)/2
         let iconRect=NSRect(x:left,y:(bounds.height-40)/2,width:40,height:40)

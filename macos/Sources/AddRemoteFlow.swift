@@ -21,10 +21,10 @@ final class AddRemoteFlow:NSObject,NSWindowDelegate,NSTableViewDataSource,NSTabl
         panel=NSPanel(contentRect:NSRect(x:0,y:0,width:880,height:660),styleMask:[.titled,.closable,.resizable],backing:.buffered,defer:false)
         super.init();panel.title="Add a remote";panel.isReleasedWhenClosed=false;panel.delegate=self
         panel.appearance=NSAppearance(named:.aqua);panel.minSize=NSSize(width:840,height:620)
-        build();rescan()
+        build();rescan();if let root=panel.contentView { WorkspaceTypography.apply(to:root) }
     }
     private func label(_ title:String,size:CGFloat=13,weight:NSFont.Weight = .regular,muted:Bool=false)->NSTextField {
-        let text=NSTextField(wrappingLabelWithString:title);text.font = .systemFont(ofSize:size,weight:weight);text.textColor=muted ? .rvMuted:.rvInk
+        let text=NSTextField(wrappingLabelWithString:title);text.font = WorkspaceTypography.text(size,weight:weight);text.textColor=muted ? .rvMuted:.rvInk
         text.setContentCompressionResistancePriority(.defaultLow,for:.horizontal);return text
     }
     private func button(_ title:String,_ action:Selector)->NSButton {
@@ -36,30 +36,30 @@ final class AddRemoteFlow:NSObject,NSWindowDelegate,NSTableViewDataSource,NSTabl
     }
     private func build() {
         let root=WorkspaceSurface(.background);panel.contentView=root
-        let header=NSStackView();header.orientation = .vertical;header.alignment = .leading;header.spacing=8
-        stepLabel.font = .systemFont(ofSize:10,weight:.semibold);stepLabel.textColor = .rvAccent
-        titleLabel.font = .systemFont(ofSize:26,weight:.bold);titleLabel.textColor = .rvInk
-        subtitle.font = .systemFont(ofSize:13);subtitle.textColor = .rvMuted
+        let header=NSStackView();header.orientation = .vertical;header.alignment = .leading;header.spacing=WorkspaceSpacing.related
+        stepLabel.font = WorkspaceTypography.body(10,weight:.semibold);stepLabel.textColor = .rvAccent
+        titleLabel.font = WorkspaceTypography.heading(26,weight:.bold);titleLabel.textColor = .rvInk
+        subtitle.font = WorkspaceTypography.body(13);subtitle.textColor = .rvMuted
         [stepLabel,titleLabel,subtitle].forEach { header.addArrangedSubview($0) }
         root.addSubview(header);header.translatesAutoresizingMaskIntoConstraints=false
-        NSLayoutConstraint.activate([header.leadingAnchor.constraint(equalTo:root.leadingAnchor,constant:28),header.trailingAnchor.constraint(equalTo:root.trailingAnchor,constant:-28),header.topAnchor.constraint(equalTo:root.topAnchor,constant:24),header.heightAnchor.constraint(equalToConstant:104)])
+        NSLayoutConstraint.activate([header.leadingAnchor.constraint(equalTo:root.leadingAnchor,constant:WorkspaceSpacing.inset),header.trailingAnchor.constraint(equalTo:root.trailingAnchor,constant:-WorkspaceSpacing.inset),header.topAnchor.constraint(equalTo:root.topAnchor,constant:24),header.heightAnchor.constraint(equalToConstant:104)])
         let divider=NSBox();divider.boxType = .separator;root.addSubview(divider);divider.translatesAutoresizingMaskIntoConstraints=false
         primary=PrimaryButton(title:"Continue",target:self,action:#selector(proceed));primary.isBordered=false;primary.keyEquivalent="\r"
         back=button("Cancel",#selector(goBack));back.keyEquivalent="\u{1b}"
-        feedback.font = .systemFont(ofSize:11);feedback.textColor = .rvMuted;feedback.lineBreakMode = .byTruncatingTail
-        let footer=NSStackView(views:[back,feedback,primary]);footer.spacing=16
+        feedback.font = WorkspaceTypography.body(11);feedback.textColor = .rvMuted;feedback.lineBreakMode = .byTruncatingTail
+        let footer=NSStackView(views:[back,feedback,primary]);footer.spacing=WorkspaceSpacing.section
         feedback.setContentHuggingPriority(.init(1),for:.horizontal)
         root.addSubview(footer);footer.translatesAutoresizingMaskIntoConstraints=false
-        NSLayoutConstraint.activate([footer.leadingAnchor.constraint(equalTo:root.leadingAnchor,constant:28),footer.trailingAnchor.constraint(equalTo:root.trailingAnchor,constant:-28),footer.bottomAnchor.constraint(equalTo:root.bottomAnchor,constant:-20),footer.heightAnchor.constraint(equalToConstant:38),divider.leadingAnchor.constraint(equalTo:root.leadingAnchor),divider.trailingAnchor.constraint(equalTo:root.trailingAnchor),divider.bottomAnchor.constraint(equalTo:footer.topAnchor,constant:-16)])
+        NSLayoutConstraint.activate([footer.leadingAnchor.constraint(equalTo:root.leadingAnchor,constant:WorkspaceSpacing.inset),footer.trailingAnchor.constraint(equalTo:root.trailingAnchor,constant:-WorkspaceSpacing.inset),footer.bottomAnchor.constraint(equalTo:root.bottomAnchor,constant:-20),footer.heightAnchor.constraint(equalToConstant:38),divider.leadingAnchor.constraint(equalTo:root.leadingAnchor),divider.trailingAnchor.constraint(equalTo:root.trailingAnchor),divider.bottomAnchor.constraint(equalTo:footer.topAnchor,constant:-16)])
         let host=NSView();root.addSubview(host);host.translatesAutoresizingMaskIntoConstraints=false
-        NSLayoutConstraint.activate([host.leadingAnchor.constraint(equalTo:root.leadingAnchor,constant:28),host.trailingAnchor.constraint(equalTo:root.trailingAnchor,constant:-28),host.topAnchor.constraint(equalTo:header.bottomAnchor,constant:8),host.bottomAnchor.constraint(equalTo:divider.topAnchor,constant:-20)])
+        NSLayoutConstraint.activate([host.leadingAnchor.constraint(equalTo:root.leadingAnchor,constant:WorkspaceSpacing.inset),host.trailingAnchor.constraint(equalTo:root.trailingAnchor,constant:-WorkspaceSpacing.inset),host.topAnchor.constraint(equalTo:header.bottomAnchor,constant:8),host.bottomAnchor.constraint(equalTo:divider.topAnchor,constant:-20)])
         pin(receiverPage,to:host);pin(agentPage,to:host)
         buildReceiverPage();buildAgentPage()
     }
     private func buildReceiverPage() {
         let connection=label("Bluetooth remote? Pair it in macOS System Settings → Bluetooth first and make sure it is connected. Then click Refresh below. For a USB remote, plug in its receiver.",size:12,muted:true)
         receiverPage.addSubview(connection);connection.translatesAutoresizingMaskIntoConstraints=false
-        let heading=NSStackView(views:[label("Connected devices",size:13,weight:.semibold),NSView(),button("Refresh",#selector(rescan))]);heading.spacing=12
+        let heading=NSStackView(views:[label("Connected devices",size:13,weight:.semibold),NSView(),button("Refresh",#selector(rescan))]);heading.spacing=WorkspaceSpacing.controls
         receiverPage.addSubview(heading);heading.translatesAutoresizingMaskIntoConstraints=false
         let card=WorkspaceSurface(.card);receiverPage.addSubview(card);card.translatesAutoresizingMaskIntoConstraints=false
         let scroll=NSScrollView();scroll.hasVerticalScroller=true;scroll.autohidesScrollers=true;scroll.drawsBackground=false
@@ -70,7 +70,7 @@ final class AddRemoteFlow:NSObject,NSWindowDelegate,NSTableViewDataSource,NSTabl
         scroll.documentView=table;pin(scroll,to:card,inset:8)
         let hint=label("Not sure which one? Turn the remote off and on, or reconnect its USB receiver, then refresh.",size:11,muted:true)
         receiverPage.addSubview(hint);hint.translatesAutoresizingMaskIntoConstraints=false
-        detail.font = .systemFont(ofSize:12);detail.textColor = .rvMuted
+        detail.font = WorkspaceTypography.body(12);detail.textColor = .rvMuted
         receiverPage.addSubview(detail);detail.translatesAutoresizingMaskIntoConstraints=false
         let missing=button("Get an agent setup prompt…",#selector(notListed))
         missing.toolTip="After pairing or connecting, let your agent identify the remote and help finish setup."
@@ -88,12 +88,12 @@ final class AddRemoteFlow:NSObject,NSWindowDelegate,NSTableViewDataSource,NSTabl
         let guideCard=WorkspaceSurface(.card),promptCard=WorkspaceSurface(.card)
         for view in [guideCard,promptCard] { agentPage.addSubview(view);view.translatesAutoresizingMaskIntoConstraints=false }
         NSLayoutConstraint.activate([guideCard.leadingAnchor.constraint(equalTo:agentPage.leadingAnchor),guideCard.topAnchor.constraint(equalTo:agentPage.topAnchor),guideCard.bottomAnchor.constraint(equalTo:agentPage.bottomAnchor),guideCard.widthAnchor.constraint(equalToConstant:228),promptCard.leadingAnchor.constraint(equalTo:guideCard.trailingAnchor,constant:16),promptCard.trailingAnchor.constraint(equalTo:agentPage.trailingAnchor),promptCard.topAnchor.constraint(equalTo:agentPage.topAnchor),promptCard.bottomAnchor.constraint(equalTo:agentPage.bottomAnchor)])
-        let guide=NSStackView();guide.orientation = .vertical;guide.alignment = .leading;guide.spacing=16
+        let guide=NSStackView();guide.orientation = .vertical;guide.alignment = .leading;guide.spacing=WorkspaceSpacing.section
         guideCard.addSubview(guide);guide.translatesAutoresizingMaskIntoConstraints=false
         NSLayoutConstraint.activate([guide.leadingAnchor.constraint(equalTo:guideCard.leadingAnchor,constant:18),guide.trailingAnchor.constraint(equalTo:guideCard.trailingAnchor,constant:-18),guide.topAnchor.constraint(equalTo:guideCard.topAnchor,constant:20),guide.bottomAnchor.constraint(lessThanOrEqualTo:guideCard.bottomAnchor,constant:-16)])
         guide.addArrangedSubview(label("Get help from an agent",size:14,weight:.semibold))
         func step(_ number:String,_ title:String,_ text:String) {
-            let content=NSStackView();content.orientation = .vertical;content.alignment = .leading;content.spacing=5
+            let content=NSStackView();content.orientation = .vertical;content.alignment = .leading;content.spacing=WorkspaceSpacing.related
             content.addArrangedSubview(label(number + "  " + title,size:12,weight:.semibold))
             content.addArrangedSubview(label(text,size:11,muted:true));guide.addArrangedSubview(content)
             content.widthAnchor.constraint(equalTo:guide.widthAnchor).isActive=true
@@ -108,7 +108,7 @@ final class AddRemoteFlow:NSObject,NSWindowDelegate,NSTableViewDataSource,NSTabl
         let promptTitle=label("Setup prompt",size:13,weight:.semibold)
         promptCard.addSubview(promptTitle);promptTitle.translatesAutoresizingMaskIntoConstraints=false
         let scroll=NSScrollView();scroll.hasVerticalScroller=true;scroll.autohidesScrollers=true;scroll.drawsBackground=false
-        promptText.isEditable=false;promptText.isSelectable=true;promptText.isRichText=false;promptText.font = .systemFont(ofSize:12)
+        promptText.isEditable=false;promptText.isSelectable=true;promptText.isRichText=false;promptText.font = WorkspaceTypography.body(12)
         promptText.textColor = .rvInk;promptText.backgroundColor = .white;promptText.textContainerInset=NSSize(width:8,height:8)
         promptText.frame=NSRect(x:0,y:0,width:500,height:320);promptText.minSize=NSSize(width:0,height:0);promptText.maxSize=NSSize(width:CGFloat.greatestFiniteMagnitude,height:CGFloat.greatestFiniteMagnitude)
         promptText.isVerticallyResizable=true;promptText.isHorizontallyResizable=false;promptText.autoresizingMask = [.width]
@@ -121,13 +121,8 @@ final class AddRemoteFlow:NSObject,NSWindowDelegate,NSTableViewDataSource,NSTabl
     func render(to url:URL,showPrompt:Bool=false,compact:Bool=false) throws {
         if compact { panel.setContentSize(NSSize(width:840,height:620)) }
         if showPrompt { manual=true;showingPrompt=true;updateSelection() }
-        guard let root=panel.contentView else { return };root.layoutSubtreeIfNeeded()
-        if let bitmap=root.bitmapImageRepForCachingDisplay(in:root.bounds) {
-            root.cacheDisplay(in:root.bounds,to:bitmap)
-            // Native offscreen controls can leave transparent backing regions.
-            let output=NSImage(size:root.bounds.size);output.lockFocus();NSColor.rvBackground.setFill();root.bounds.fill();bitmap.draw(in:root.bounds);output.unlockFocus()
-            if let tiff=output.tiffRepresentation,let png=NSBitmapImageRep(data:tiff)?.representation(using:.png,properties:[:]) { try png.write(to:url) }
-        }
+        guard let root=panel.contentView else { return }
+        try WorkspacePreview.write(root,to:url)
     }
     @objc private func rescan() {
         let selection=selectedDevice?.id
@@ -146,16 +141,16 @@ final class AddRemoteFlow:NSObject,NSWindowDelegate,NSTableViewDataSource,NSTabl
         let device=devices[row],matches=device.matchingPlugins(in:catalog)
         if tableColumn?.identifier.rawValue == "support" {
             let cell=ReceiverDeviceCell(),text=NSTextField(labelWithString:matches.count == 1 ? "Ready to set up":matches.isEmpty ? "Create plugin":"Review plugins")
-            text.font = .systemFont(ofSize:11,weight:.medium);text.textColor = .rvInk
+            text.font = WorkspaceTypography.body(11,weight:.medium);text.textColor = .rvInk
             cell.textField=text;cell.addSubview(text);text.translatesAutoresizingMaskIntoConstraints=false
             NSLayoutConstraint.activate([text.leadingAnchor.constraint(equalTo:cell.leadingAnchor,constant:8),text.centerYAnchor.constraint(equalTo:cell.centerYAnchor)])
             cell.updateContrast();return cell
         }
         let cell=ReceiverDeviceCell(),name=NSTextField(labelWithString:device.name),info=NSTextField(labelWithString:device.transport + " · " + device.hardwareID),manufacturer=NSTextField(labelWithString:"Manufacturer: " + (device.manufacturer ?? "Not reported")),icon=NSImageView()
         icon.image=NSImage(systemSymbolName:device.transport.lowercased().contains("bluetooth") ? "wave.3.right":"cable.connector",accessibilityDescription:nil);icon.contentTintColor = .rvMuted
-        name.font = .systemFont(ofSize:13,weight:.medium);name.lineBreakMode = .byTruncatingTail
+        name.font = WorkspaceTypography.body(13,weight:.medium);name.lineBreakMode = .byTruncatingTail
         info.font = .monospacedSystemFont(ofSize:10,weight:.regular);info.textColor = .rvMuted
-        manufacturer.font = .systemFont(ofSize:11);manufacturer.lineBreakMode = .byTruncatingTail
+        manufacturer.font = WorkspaceTypography.body(11);manufacturer.lineBreakMode = .byTruncatingTail
         manufacturer.toolTip=manufacturer.stringValue
         info.lineBreakMode = .byTruncatingTail
         cell.textField=name;cell.imageView=icon

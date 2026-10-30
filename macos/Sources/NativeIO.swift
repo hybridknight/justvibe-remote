@@ -335,14 +335,15 @@ final class TargetOutput {
         guard let target = target(config) else { return false }
         return NSWorkspace.shared.frontmostApplication?.processIdentifier == target.processIdentifier
     }
-    func show(_ config: Configuration) throws {
+    func show(_ config: Configuration,completion:((Error?)->Void)? = nil) throws {
         if config.appPluginID == Configuration.noSpecificAppID { return }
         if let app = target(config) {
             app.activate(options: [])
+            completion?(nil)
         } else if !config.targetAppPath.isEmpty {
-            NSWorkspace.shared.openApplication(at: URL(fileURLWithPath: config.targetAppPath), configuration: NSWorkspace.OpenConfiguration())
+            NSWorkspace.shared.openApplication(at: URL(fileURLWithPath: config.targetAppPath), configuration: NSWorkspace.OpenConfiguration()) { _,error in completion?(error) }
         } else if let url = plugin?.targets["macos"]?.bundleIds.compactMap({ NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0) }).first {
-            NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
+            NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration()) { _,error in completion?(error) }
         } else {
             throw JustVibeRemoteError.message("Open the selected app first, or choose its application in JustVibe Remote.")
         }

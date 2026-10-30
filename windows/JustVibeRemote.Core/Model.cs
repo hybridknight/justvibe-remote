@@ -30,9 +30,15 @@ public readonly record struct Usage(uint Page, uint Code)
 }
 [JsonConverter(typeof(JsonStringEnumConverter<ActionKind>))]
 public enum ActionKind { Native, Dictate, Focus, Send, Backspace, Escape }
-public sealed record Binding(string Name, Usage? Usage, ActionKind Action, string? ControlID = null);
+public sealed record Binding(string Name, Usage? Usage, ActionKind Action, string? ControlID = null, string? LaunchAppID = null, string? LaunchAppPath = null);
 public sealed record Configuration
 {
+    [JsonIgnore] public string TargetInstance { get; init; }="";
+    public const string NoSpecificAppID="justviberemote.no-specific-app";
+    public bool RemoteSetupCompleted { get; init; }
+    public RemoteSetupCheckpoint? RemoteSetupCheckpoint { get; init; }
+    public string ArtworkPath { get; init; }="";
+    public VoiceTypingSettings VoiceTyping { get; init; }=new();
     public int SchemaVersion { get; init; } = 1;
     public DeviceProfile Profile { get; init; } = new();
     public string DevicePluginID { get; init; } = "org.justviberemote.device.xingwei-usb";
@@ -76,6 +82,8 @@ public sealed record Configuration
     public void Validate()
     {
         Profile.Validate();
+        VoiceTyping.Validate();
+        if(RemoteSetupCheckpoint is {} checkpoint&&!Enum.IsDefined(checkpoint.Stage))throw new InvalidDataException("Invalid setup checkpoint.");
         if (SchemaVersion != 1 || VoiceMode is not ("hold" or "toggle") || Bindings.Count is < 1 or > 64 ||
             Bindings.Any(binding => !Enum.IsDefined(binding.Action)) || AppMappings.Count>256 ||
             AppMappings.Values.Any(m=>m.Bindings.Count is <1 or >64||m.VoiceMode is not ("hold" or "toggle")||m.Bindings.Any(b=>!Enum.IsDefined(b.Action)))||

@@ -43,7 +43,7 @@ final class QuickSetup: NSObject, NSWindowDelegate {
     private var microphoneButtonStep:VoiceSetupStepView?,microphoneInputStep:VoiceSetupStepView?
     private var microphoneControls:NSStackView?
     private var milestoneRows:[SetupMilestoneView]=[]
-    private var setupActions:[RemoteAction] { controller.availableActions.filter { $0 != .dictate } }
+    private var setupActions:[RemoteAction] { controller.availableActions.filter { $0 != .dictate && ($0 != .focus || controller.config.appPluginID != Configuration.noSpecificAppID) } }
     private var suggestedShortcut:String? { try? controller.appPlugin?.app?.shortcut(.dictate) }
     private var initialShortcut:String { SetupShortcut.initialValue(saved:controller.config.shortcut,confirmed:controller.config.shortcutConfirmed,suggested:suggestedShortcut) }
     var finished:(() -> Void)?
@@ -69,18 +69,18 @@ final class QuickSetup: NSObject, NSWindowDelegate {
         refresh()
     }
     private func text(_ value:String,size:CGFloat=13,weight:NSFont.Weight = .regular,color:NSColor = .rvInk)->NSTextField {
-        let field=NSTextField(wrappingLabelWithString:value);field.font = .systemFont(ofSize:size,weight:weight);field.textColor=color
+        let field=NSTextField(wrappingLabelWithString:value);field.font = WorkspaceTypography.text(size,weight:weight);field.textColor=color
         field.setContentCompressionResistancePriority(.defaultLow,for:.horizontal);return field
     }
-    private func vertical(_ stack:NSStackView,spacing:CGFloat=14) { stack.orientation = .vertical;stack.alignment = .leading;stack.spacing=spacing }
+    private func vertical(_ stack:NSStackView,spacing:CGFloat=WorkspaceSpacing.section) { stack.orientation = .vertical;stack.alignment = .leading;stack.spacing=spacing }
     private func button(_ title:String,_ selector:Selector)->NSButton { let value=NSButton(title:title,target:self,action:selector);value.bezelStyle = .rounded;value.controlSize = .large;return value }
     private func build() {
         let root=WorkspaceSurface(.card);panel.contentView=root
         let picture=WorkspaceSurface(.sidebar)
         root.addSubview(picture);picture.translatesAutoresizingMaskIntoConstraints=false
         NSLayoutConstraint.activate([picture.leadingAnchor.constraint(equalTo:root.leadingAnchor),picture.topAnchor.constraint(equalTo:root.topAnchor),picture.bottomAnchor.constraint(equalTo:root.bottomAnchor),picture.widthAnchor.constraint(equalToConstant:300)])
-        vertical(visual,spacing:12);picture.addSubview(visual);visual.translatesAutoresizingMaskIntoConstraints=false
-        NSLayoutConstraint.activate([visual.leadingAnchor.constraint(equalTo:picture.leadingAnchor,constant:26),visual.trailingAnchor.constraint(equalTo:picture.trailingAnchor,constant:-26),visual.topAnchor.constraint(equalTo:picture.topAnchor,constant:28)])
+        vertical(visual,spacing:WorkspaceSpacing.controls);picture.addSubview(visual);visual.translatesAutoresizingMaskIntoConstraints=false
+        NSLayoutConstraint.activate([visual.leadingAnchor.constraint(equalTo:picture.leadingAnchor,constant:WorkspaceSpacing.inset),visual.trailingAnchor.constraint(equalTo:picture.trailingAnchor,constant:-WorkspaceSpacing.inset),visual.topAnchor.constraint(equalTo:picture.topAnchor,constant:WorkspaceSpacing.inset)])
         visual.addArrangedSubview(text("REMOTE SETUP",size:10,weight:.semibold,color:.rvAccent))
         let remoteName=text(controller.devicePlugin?.name ?? "Your remote",size:19,weight:.semibold);remoteName.maximumNumberOfLines=2;visual.addArrangedSubview(remoteName)
         let art=NSView();visual.addArrangedSubview(art);art.translatesAutoresizingMaskIntoConstraints=false
@@ -98,30 +98,31 @@ final class QuickSetup: NSObject, NSWindowDelegate {
             guard let self,self.checkpoint.stage == .button,let index=self.controller.config.bindings.firstIndex(where:{$0.controlID == id}) else { return }
             self.controller.cancelLearning();self.selectedIndex=index;self.checkpoint.controlID=id;self.rebuildContent();self.refresh()
         }
-        visualCaption.font = .systemFont(ofSize:12);visualCaption.textColor = .rvMuted;visualCaption.alignment = .center;visual.addArrangedSubview(visualCaption)
-        vertical(milestones,spacing:9);picture.addSubview(milestones);milestones.translatesAutoresizingMaskIntoConstraints=false
-        NSLayoutConstraint.activate([milestones.leadingAnchor.constraint(equalTo:picture.leadingAnchor,constant:28),milestones.trailingAnchor.constraint(equalTo:picture.trailingAnchor,constant:-22),milestones.bottomAnchor.constraint(equalTo:picture.bottomAnchor,constant:-26)])
+        visualCaption.font = WorkspaceTypography.body(12);visualCaption.textColor = .rvMuted;visualCaption.alignment = .center;visual.addArrangedSubview(visualCaption)
+        vertical(milestones,spacing:WorkspaceSpacing.related);picture.addSubview(milestones);milestones.translatesAutoresizingMaskIntoConstraints=false
+        NSLayoutConstraint.activate([milestones.leadingAnchor.constraint(equalTo:picture.leadingAnchor,constant:WorkspaceSpacing.inset),milestones.trailingAnchor.constraint(equalTo:picture.trailingAnchor,constant:-22),milestones.bottomAnchor.constraint(equalTo:picture.bottomAnchor,constant:-WorkspaceSpacing.inset)])
         for name in ["Welcome","Choose an app","Connect","Set up controls","Try it"] {
             let row=SetupMilestoneView(title:name);milestones.addArrangedSubview(row);milestoneRows.append(row)
         }
-        let footer=NSStackView();footer.spacing=10
+        let footer=NSStackView();footer.spacing=WorkspaceSpacing.controls
         back=button("Back",#selector(goBack));primary=PrimaryButton(title:"Get started",target:self,action:#selector(advance));primary.isBordered=false
         later=button("Continue later",#selector(cancel));later.keyEquivalent="\u{1b}"
         let space=NSView();space.setContentHuggingPriority(.init(1),for:.horizontal)
         [back,later,space,primary].forEach { footer.addArrangedSubview($0) }
         root.addSubview(footer);footer.translatesAutoresizingMaskIntoConstraints=false
-        NSLayoutConstraint.activate([footer.leadingAnchor.constraint(equalTo:picture.trailingAnchor,constant:30),footer.trailingAnchor.constraint(equalTo:root.trailingAnchor,constant:-30),footer.bottomAnchor.constraint(equalTo:root.bottomAnchor,constant:-25),footer.heightAnchor.constraint(equalToConstant:38)])
+        NSLayoutConstraint.activate([footer.leadingAnchor.constraint(equalTo:picture.trailingAnchor,constant:WorkspaceSpacing.inset),footer.trailingAnchor.constraint(equalTo:root.trailingAnchor,constant:-WorkspaceSpacing.inset),footer.bottomAnchor.constraint(equalTo:root.bottomAnchor,constant:-25),footer.heightAnchor.constraint(equalToConstant:38)])
         let scroll=NSScrollView();scroll.drawsBackground=false;scroll.hasVerticalScroller=true;scroll.autohidesScrollers=true;root.addSubview(scroll);scroll.translatesAutoresizingMaskIntoConstraints=false
-        NSLayoutConstraint.activate([scroll.leadingAnchor.constraint(equalTo:picture.trailingAnchor,constant:30),scroll.trailingAnchor.constraint(equalTo:root.trailingAnchor,constant:-30),scroll.topAnchor.constraint(equalTo:root.topAnchor,constant:28),scroll.bottomAnchor.constraint(equalTo:footer.topAnchor,constant:-18)])
+        NSLayoutConstraint.activate([scroll.leadingAnchor.constraint(equalTo:picture.trailingAnchor,constant:WorkspaceSpacing.inset),scroll.trailingAnchor.constraint(equalTo:root.trailingAnchor,constant:-WorkspaceSpacing.inset),scroll.topAnchor.constraint(equalTo:root.topAnchor,constant:WorkspaceSpacing.inset),scroll.bottomAnchor.constraint(equalTo:footer.topAnchor,constant:-18)])
         let document=WorkspaceDocument();document.translatesAutoresizingMaskIntoConstraints=false;scroll.documentView=document
-        vertical(body,spacing:16);document.addSubview(body);body.translatesAutoresizingMaskIntoConstraints=false
+        vertical(body,spacing:WorkspaceSpacing.page);document.addSubview(body);body.translatesAutoresizingMaskIntoConstraints=false
         NSLayoutConstraint.activate([document.widthAnchor.constraint(equalTo:scroll.contentView.widthAnchor),body.leadingAnchor.constraint(equalTo:document.leadingAnchor),body.trailingAnchor.constraint(equalTo:document.trailingAnchor),body.topAnchor.constraint(equalTo:document.topAnchor),body.bottomAnchor.constraint(equalTo:document.bottomAnchor)])
-        stageLabel.font = .systemFont(ofSize:11,weight:.semibold);stageLabel.textColor = .rvAccent
-        heading.font = .systemFont(ofSize:28,weight:.bold);heading.textColor = .rvInk
-        lead.font = .systemFont(ofSize:14);lead.textColor = .rvMuted
-        feedback.font = .systemFont(ofSize:12);feedback.textColor = .rvMuted
-        vertical(content,spacing:14)
+        stageLabel.font = WorkspaceTypography.body(11,weight:.semibold);stageLabel.textColor = .rvAccent
+        heading.font = WorkspaceTypography.heading(28,weight:.bold);heading.textColor = .rvInk
+        lead.font = WorkspaceTypography.body(14);lead.textColor = .rvMuted
+        feedback.font = WorkspaceTypography.body(12);feedback.textColor = .rvMuted
+        vertical(content,spacing:WorkspaceSpacing.section)
         for view in [stageLabel,heading,lead,content,feedback] { body.addArrangedSubview(view);view.widthAnchor.constraint(equalTo:body.widthAnchor).isActive=true }
+        WorkspaceTypography.apply(to:root)
     }
     func show() {
         guard let parent else { return };controller.stopVoice();parent.beginSheet(panel)
@@ -173,12 +174,12 @@ final class QuickSetup: NSObject, NSWindowDelegate {
             let buttonHint=text("",size:13,color:.rvMuted);microphoneButtonHint=buttonHint;buttonStep.content.addArrangedSubview(buttonHint)
             buttonHint.widthAnchor.constraint(equalTo:buttonStep.content.widthAnchor).isActive=true
             learningLink=button("Set up button",#selector(learnMicrophone));learningCancel=button("Cancel",#selector(cancelLearning))
-            let linking=NSStackView(views:[learningLink!,learningCancel!]);linking.spacing=8;buttonStep.content.addArrangedSubview(linking)
+            let linking=NSStackView(views:[learningLink!,learningCancel!]);linking.spacing=WorkspaceSpacing.related;buttonStep.content.addArrangedSubview(linking)
             let inputStep=VoiceSetupStepView(number:2,title:"Microphone");microphoneInputStep=inputStep;add(inputStep)
             inputStep.widthAnchor.constraint(equalTo:content.widthAnchor).isActive=true
             let lockedHint=text("Next, choose the remote’s microphone and check your voice with a short test.",size:13,color:.rvMuted);microphoneLockedHint=lockedHint;inputStep.content.addArrangedSubview(lockedHint)
             lockedHint.widthAnchor.constraint(equalTo:inputStep.content.widthAnchor).isActive=true
-            let controls=NSStackView();vertical(controls,spacing:12);microphoneControls=controls;inputStep.content.addArrangedSubview(controls)
+            let controls=NSStackView();vertical(controls,spacing:WorkspaceSpacing.controls);microphoneControls=controls;inputStep.content.addArrangedSubview(controls)
             controls.widthAnchor.constraint(equalTo:inputStep.content.widthAnchor).isActive=true
             let inputHint=text("Choose the remote’s USB microphone. You can record a short clip and play it back to check your voice.",size:12,color:.rvMuted)
             controls.addArrangedSubview(inputHint);inputHint.widthAnchor.constraint(equalTo:controls.widthAnchor).isActive=true
@@ -188,7 +189,7 @@ final class QuickSetup: NSObject, NSWindowDelegate {
             micPicker.setAccessibilityLabel("Remote USB microphone");micPicker.target=self;micPicker.action=#selector(changeMicrophone);controls.addArrangedSubview(micPicker)
             let test=SetupMicrophoneTest(controller:controller);audioTest=test;controls.addArrangedSubview(test)
             test.widthAnchor.constraint(equalTo:controls.widthAnchor).isActive=true;changeMicrophone()
-            microphoneHelp.font = .systemFont(ofSize:12);microphoneHelp.textColor = .rvMuted;controls.addArrangedSubview(microphoneHelp)
+            microphoneHelp.font = WorkspaceTypography.body(12);microphoneHelp.textColor = .rvMuted;controls.addArrangedSubview(microphoneHelp)
             microphoneHelp.widthAnchor.constraint(equalTo:controls.widthAnchor).isActive=true
             microphoneDefaultButton=button("Use selected microphone as system input",#selector(useSelectedMicrophone));controls.addArrangedSubview(microphoneDefaultButton!)
             let appHint=text("Select the same microphone in \(app)’s settings.",size:12,color:.rvMuted);controls.addArrangedSubview(appHint)
@@ -232,6 +233,7 @@ final class QuickSetup: NSObject, NSWindowDelegate {
             note(checkpoint.wantsVoice ? "Voice setup and your first dictation test are confirmed." : "Buttons are set up. Add voice later from Voice & microphone.")
             note("Find this remote under Remotes. Open Apps to add another app profile, or Buttons to personalize more controls.")
         }
+        WorkspaceTypography.apply(to:content)
     }
     private func refresh() {
         guard !ended else { return }
@@ -379,7 +381,7 @@ final class QuickSetup: NSObject, NSWindowDelegate {
     @objc private func allowShortcuts() { if !TargetOutput.allowed { TargetOutput.requestPermission() };openPrivacy("Privacy_Accessibility") }
     @objc private func connect() { do { if controller.running { try controller.stop() };controller.start();refresh() } catch { feedback.stringValue=error.localizedDescription } }
     @objc private func changeButton() { controller.cancelLearning();selectedIndex=buttonPicker.indexOfSelectedItem;checkpoint.controlID=controller.config.bindings[selectedIndex].controlID;rebuildContent();refresh() }
-    @objc private func changeAction() { let index=actionPicker.indexOfSelectedItem-1;guard setupActions.indices.contains(index) else { return };do { var config=controller.config;config.bindings[selectedIndex].action=setupActions[index];try controller.update(config);refresh() } catch { feedback.stringValue=error.localizedDescription } }
+    @objc private func changeAction() { let index=actionPicker.indexOfSelectedItem-1;guard setupActions.indices.contains(index) else { return };do { var config=controller.config;let action=setupActions[index];config.bindings[selectedIndex].action=action;config.bindings[selectedIndex].launchAppID=action == .focus ? config.appPluginID:nil;config.bindings[selectedIndex].launchAppPath=nil;try controller.update(config);refresh() } catch { feedback.stringValue=error.localizedDescription } }
     @objc private func learnButton() { controller.learn(selectedIndex);refresh() }
     @objc private func cancelLearning() { controller.cancelLearning();refresh() }
     @objc private func learnMicrophone() {
@@ -413,7 +415,7 @@ final class QuickSetup: NSObject, NSWindowDelegate {
     func render(to url:URL,stage:RemoteSetupStage? = nil,permissionCount:Int? = nil) throws {
         previewPermissionCount=permissionCount.map { min(2,max(0,$0)) }
         if let stage { checkpoint.stage=stage;rebuildContent();refresh() }
-        guard let view=panel.contentView else { return };view.layoutSubtreeIfNeeded()
-        if let bitmap=view.bitmapImageRepForCachingDisplay(in:view.bounds),let png:Data = { () -> Data? in view.cacheDisplay(in:view.bounds,to:bitmap);return bitmap.representation(using:.png,properties:[:]) }() { try png.write(to:url) }
+        guard let view=panel.contentView else { return }
+        try WorkspacePreview.write(view,to:url)
     }
 }

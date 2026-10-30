@@ -16,24 +16,25 @@ final class SetupMicrophoneTest: NSStackView {
     init(controller: RemoteController,showTitle:Bool = true) {
         self.controller = controller
         super.init(frame: .zero)
-        orientation = .vertical; alignment = .leading; spacing = 10
+        orientation = .vertical; alignment = .leading; spacing = WorkspaceSpacing.controls
         let title = NSTextField(labelWithString: "Test your microphone here")
-        title.font = .systemFont(ofSize: 15, weight: .semibold); if showTitle { addArrangedSubview(title) }
+        title.font = WorkspaceTypography.heading(15, weight: .semibold); if showTitle { addArrangedSubview(title) }
         meter.minValue = 0; meter.maxValue = 100; meter.levelIndicatorStyle = .continuousCapacity
         meter.setAccessibilityLabel("Microphone input level")
         addArrangedSubview(meter); meter.widthAnchor.constraint(equalTo: widthAnchor).isActive = true
-        result.font = .systemFont(ofSize: 12); result.textColor = .rvMuted
+        result.font = WorkspaceTypography.body(12); result.textColor = .rvMuted
         addArrangedSubview(result); result.widthAnchor.constraint(equalTo: widthAnchor).isActive = true
         startButton = PrimaryButton(title: "Record 5 seconds", target: self, action: #selector(startTest));startButton.isBordered=false
         startButton.widthAnchor.constraint(equalToConstant:160).isActive=true;startButton.heightAnchor.constraint(equalToConstant:36).isActive=true
         stopButton = NSButton(title: "Stop", target: self, action: #selector(stopTest))
         playButton = NSButton(title: "Play back", target: self, action: #selector(playClip))
         clearButton = NSButton(title: "Clear", target: self, action: #selector(clearClip))
-        let controls = NSStackView(views: [startButton, stopButton, playButton, clearButton]); controls.spacing = 8
+        let controls = NSStackView(views: [startButton, stopButton, playButton, clearButton]); controls.spacing = WorkspaceSpacing.related
         addArrangedSubview(controls)
         let help = NSTextField(wrappingLabelWithString: "Speak near the remote while recording. Hold its microphone button if needed. Your clip stays on this computer and is cleared when you leave.")
-        help.font = .systemFont(ofSize: 12); help.textColor = .rvMuted; addArrangedSubview(help)
+        help.font = WorkspaceTypography.body(12); help.textColor = .rvMuted; addArrangedSubview(help)
         help.widthAnchor.constraint(equalTo: widthAnchor).isActive = true
+        WorkspaceTypography.apply(to:self)
         updateButtons()
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -121,19 +122,20 @@ final class VoiceMicrophonePanel:NSStackView {
     init(controller:RemoteController) {
         self.controller=controller;test=SetupMicrophoneTest(controller:controller,showTitle:false)
         super.init(frame:.zero)
-        orientation = .vertical;alignment = .leading;spacing=18
-        let inputLabel=NSTextField(labelWithString:"AUDIO INPUT");inputLabel.font = .systemFont(ofSize:10,weight:.semibold);inputLabel.textColor = .rvMuted;addArrangedSubview(inputLabel)
+        orientation = .vertical;alignment = .leading;spacing=WorkspaceSpacing.section
+        let inputLabel=NSTextField(labelWithString:"AUDIO INPUT");inputLabel.font = WorkspaceTypography.body(10,weight:.semibold);inputLabel.textColor = .rvMuted;addArrangedSubview(inputLabel)
         picker.target=self;picker.action=#selector(selectInput);picker.setAccessibilityLabel("Microphone for this remote")
         let refresh=NSButton(title:"Refresh inputs",target:self,action:#selector(reload))
-        let row=NSStackView(views:[picker,refresh]);row.spacing=8;addArrangedSubview(row)
+        let row=NSStackView(views:[picker,refresh]);row.spacing=WorkspaceSpacing.related;addArrangedSubview(row)
         row.widthAnchor.constraint(equalTo:widthAnchor).isActive=true
         picker.setContentCompressionResistancePriority(.defaultLow,for:.horizontal)
-        status.font = .systemFont(ofSize:12);status.textColor = .rvMuted
+        status.font = WorkspaceTypography.body(12);status.textColor = .rvMuted
         addArrangedSubview(status)
-        let levelLabel=NSTextField(labelWithString:"INPUT LEVEL");levelLabel.font = .systemFont(ofSize:10,weight:.semibold);levelLabel.textColor = .rvMuted;addArrangedSubview(levelLabel)
+        let levelLabel=NSTextField(labelWithString:"INPUT LEVEL");levelLabel.font = WorkspaceTypography.body(10,weight:.semibold);levelLabel.textColor = .rvMuted;addArrangedSubview(levelLabel)
         addArrangedSubview(test)
         test.widthAnchor.constraint(equalTo:widthAnchor).isActive=true
         status.widthAnchor.constraint(equalTo:widthAnchor).isActive=true
+        WorkspaceTypography.apply(to:self)
         reload()
     }
     required init?(coder:NSCoder) { fatalError("init(coder:) is not used") }

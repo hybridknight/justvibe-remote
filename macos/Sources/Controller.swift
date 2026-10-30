@@ -64,7 +64,7 @@ final class RemoteController {
     var voiceActive: Bool { voice.held || pendingVoice }
     private(set) var dictationStopSummary="Stop timing appears after your next remote dictation stop."
     var actionPlugin:AppPlugin? { config.appPluginID == Configuration.noSpecificAppID ? AppRouting.sharedActions:appPlugin?.app }
-    var availableActions: [RemoteAction] { RemoteAction.allCases.filter { actionPlugin?.supports($0) == true || $0 == .native } }
+    var availableActions: [RemoteAction] { RemoteAction.allCases.filter { actionPlugin?.supports($0) == true || $0 == .native || $0 == .focus } }
     var systemDictationSettings:SystemDictationSettings { config.systemDictation[config.devicePluginID] ?? SystemDictationSettings() }
     var systemDictationSummary:String {
         let setting=systemDictationSettings
@@ -408,6 +408,7 @@ final class RemoteController {
     }
     private func handle(_ usage: Usage, down: Bool, deliveryDelayMs:Double? = nil) {
         guard running else { return }
+        let repeatedDown=down && activeUsages.contains(usage)
         let receivedAt=ProcessInfo.processInfo.systemUptime
         if down {
             cancelDeleteRepeat()
@@ -444,7 +445,7 @@ final class RemoteController {
         guard !buttonTestMode && !microphoneTesting && !cursorSettingsOpen else { return }
         synchronizeRoute()
         guard mappingReady, let route = routedConfig, let binding = route.bindings.first(where: { $0.usage == usage }) else { return }
-        guard output.plugin?.supports(binding.action) == true else { return }
+        guard binding.action == .focus || output.plugin?.supports(binding.action) == true else { return }
         if binding.action == .dictate {
             if route.voiceMode == "hold", !down { finishVoice(); return }
             if down {
@@ -454,9 +455,20 @@ final class RemoteController {
             return
         }
         guard down else { return }
+        if binding.action == .focus && repeatedDown { return }
         do {
             guard maySendOutput?() != false else { throw JustVibeRemoteError.message("Another remote is dictating. Finish its voice input before sending app shortcuts.") }
-            if binding.action == .focus { try output.show(route) }
+            if binding.action == .focus {
+                finishVoice()
+                guard !voiceActive && !output.hasVoiceOutput else { throw JustVibeRemoteError.message("Stop voice input before opening another app.") }
+                let target=try AppRouting.launchTarget(binding,config:config,route:route,apps:catalog.apps)
+                let launcher=TargetOutput();launcher.plugin=try catalog.find(target.appPluginID,kind:"app").app
+                let name=(try? catalog.find(target.appPluginID,kind:"app"))?.name ?? "app"
+                status="Opening \(name)";changed?()
+                try launcher.show(target) { [weak self] error in
+                    DispatchQueue.main.async { self?.status=error.map{"Could not open \(name): \($0.localizedDescription)"} ?? "Opened \(name)";self?.changed?() }
+                }
+            }
             else if binding.action != .native {
                 guard output.isTargetFrontmost(route) else { throw JustVibeRemoteError.message("Switch to the selected app before using mapped typing buttons.") }
                 try output.tap(binding.action)

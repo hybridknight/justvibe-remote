@@ -244,4 +244,106 @@ try
     Throws(() => PluginManifest.Decode(new byte[65_537]), "manifest size bounded");
 }
 finally { Directory.Delete(pluginTemp, true); }
+// Workspace/session parity policies stay portable: no Raw Input, output, or recording.
+var ownership=new RemoteSessionOwnership();
+ownership.Start("first","1915:1025");ownership.Start("second","1915:1026");
+Throws(()=>ownership.Start("duplicate","1915:1025"),"duplicate receiver identities cannot run concurrently");
+Check(ownership.ClaimVoice("first")&&!ownership.ClaimVoice("second"),"only one receiver owns held dictation output");
+Check(!ownership.AllowsOutput("second")&&ownership.AllowsOutput("first"),"another receiver cannot type into held dictation");
+ownership.ReleaseVoice("second");Check(ownership.VoiceOwner=="first","another receiver cannot release voice ownership");
+ownership.Stop("first");Check(ownership.ClaimVoice("second"),"stopping the owner allows another receiver to dictate");
+ownership.Stop("second");Check(ownership.AllowsOutput("first"),"stopping both receivers clears voice ownership");
+var voiceConfig=new Configuration{Profile=profile,VoiceTyping=new(VoiceTypingMode.Fallback,"microphone",true)};
+Check(VoiceTypingRouting.ShouldTrigger(voiceConfig,null,"microphone",true,false,false),"explicit Windows voice fallback handles unsupported apps");
+Check(!VoiceTypingRouting.ShouldTrigger(voiceConfig,null,"microphone",false,false,false),"voice typing never triggers on release");
+Check(!VoiceTypingRouting.ShouldTrigger(voiceConfig,null,"microphone",true,true,false),"button learning never starts voice typing");
+Check(!VoiceTypingRouting.ShouldTrigger(voiceConfig,null,"microphone",true,false,true),"button test never starts voice typing");
+Check(!VoiceTypingRouting.ShouldTrigger(voiceConfig,null,"other",true,false,false),"only selected physical voice control may trigger");
+Check(!VoiceTypingRouting.ShouldTrigger(voiceConfig with{VoiceTyping=new()},null,"microphone",true,false,false),"Windows voice typing is opt in");
+var configuredVoice=voiceConfig with{ShortcutConfirmed=true,Shortcut="CTRL+M",Bindings=[new("Mic",new Usage(12,1),ActionKind.Dictate,"microphone")]};
+Check(!VoiceTypingRouting.ShouldTrigger(voiceConfig,configuredVoice,"microphone",true,false,false),"confirmed app dictation takes priority over OS fallback");
+Check(VoiceTypingRouting.ShouldTrigger(voiceConfig,configuredVoice with{ShortcutConfirmed=false},"microphone",true,false,false),"unconfirmed app shortcut permits explicit fallback");
+Check(VoiceTypingRouting.ShouldTrigger(voiceConfig with{VoiceTyping=new(VoiceTypingMode.Everywhere,"microphone",true)},configuredVoice,"microphone",true,false,false),"everywhere mode deliberately overrides app dictation");
+Throws(()=>new VoiceTypingSettings(VoiceTypingMode.Everywhere,"microphone",false).Validate(),"voice typing confirmation required");
+Throws(()=>new VoiceTypingSettings(VoiceTypingMode.Fallback,null,true).Validate(),"voice typing requires a chosen physical control");
+new VoiceTypingSettings().Validate();
+var workspaceTemp=Path.Combine(Path.GetTempPath(),"justvibe-workspace-"+Guid.NewGuid());
+try
+{
+    var bundled=Path.Combine(root,"plugins","bundled");
+    var workspaceCatalog=new PluginCatalog(bundled,Path.Combine(workspaceTemp,"plugins"));
+    var originalConfig=new Configuration{Profile=profile,AutoConnect=true,Shortcut="CTRL+M",ShortcutConfirmed=true,Bindings=visual.Bindings()};
+    var originalStore=new ConfigurationStore(Path.Combine(workspaceTemp,"settings.json"));originalStore.Save(originalConfig);
+    var oldBytes=File.ReadAllBytes(originalStore.Path);
+    var library=new RemoteConfigurationLibrary(workspaceTemp,originalConfig,workspaceCatalog);
+    var independent=library.Load(originalConfig.DevicePluginID);
+    Check(independent.Shortcut=="CTRL+M"&&independent.AutoConnect,"per-receiver migration preserves legacy voice and reconnect choices");
+    Check(File.ReadAllBytes(originalStore.Path).SequenceEqual(oldBytes),"loading per-receiver workspace never overwrites legacy settings");
+    var shared=PluginSelection.Select(independent,workspaceCatalog,independent.DevicePluginID,Configuration.NoSpecificAppID);
+    Check(shared.Bindings.All(b=>SharedActions.Supports(b.Action)),"No specific app removes app-only actions");
+    shared=shared with{Bindings=shared.Bindings.Select((b,index)=>index==0?b with{Action=ActionKind.Backspace}:b).ToList()};
+    var sharedRoute=AppRouting.Resolve(shared,workspaceCatalog.Apps,new(Name:"Unconfigured",Path:"C:/Other.exe",Instance:"123"));
+    Check(sharedRoute?.AppPluginID==Configuration.NoSpecificAppID&&sharedRoute.TargetInstance=="123","shared actions route only to a known foreground instance");
+    Check(sharedRoute?.Bindings[0].Action==ActionKind.Backspace,"shared backspace works without an app plugin");
+    Check(AppRouting.Resolve(shared,workspaceCatalog.Apps,null)==null,"unknown foreground disables shared output");
+    var checkpoint=independent with{RemoteSetupCheckpoint=new(RemoteSetupStage.Shortcut,true),RemoteSetupCompleted=false,VoiceTyping=new(VoiceTypingMode.Fallback,"microphone",true),ArtworkPath="local-photo.png"};
+    library.StoreFor(independent.DevicePluginID).Save(checkpoint);
+    var loaded=library.Load(independent.DevicePluginID);
+    Check(loaded.RemoteSetupCheckpoint==checkpoint.RemoteSetupCheckpoint&&!loaded.RemoteSetupCompleted,"setup resumes its exact saved step without claiming completion");
+    Check(loaded.VoiceTyping==checkpoint.VoiceTyping&&loaded.ArtworkPath==checkpoint.ArtworkPath,"voice typing and local artwork persist per receiver");
+    var restored=PluginSelection.Select(shared,workspaceCatalog,shared.DevicePluginID,independent.AppPluginID);
+    Check(restored.ShortcutConfirmed&&restored.Shortcut=="CTRL+M","returning from shared controls restores confirmed app settings");
+}
+finally{if(Directory.Exists(workspaceTemp))Directory.Delete(workspaceTemp,true);}
+var receiverMigrationTemp=Path.Combine(Path.GetTempPath(),"justvibe-receiver-migration-"+Guid.NewGuid());
+try
+{
+    var pluginDirectory=Path.Combine(receiverMigrationTemp,"plugins");
+    var catalog=new PluginCatalog(Path.Combine(root,"plugins","bundled"),pluginDirectory);
+    var source=catalog.Devices.First();
+    var second=source with{Id="com.example.justvibe.second",Name="Synthetic second receiver",Device=source.Device! with{Profile=source.Device.Profile with{Id="synthetic-second",ProductId=4134}}};
+    string folder=Path.Combine(pluginDirectory,second.Id);Directory.CreateDirectory(folder);var fixture=System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(Path.Combine(root,"plugins","bundled",source.Id,"plugin.json")))!;fixture["id"]=second.Id;fixture["name"]=second.Name;fixture["device"]!["profile"]!["id"]="synthetic-second";fixture["device"]!["profile"]!["productId"]=4134;File.WriteAllText(Path.Combine(folder,"plugin.json"),fixture.ToJsonString());
+    catalog=new PluginCatalog(Path.Combine(root,"plugins","bundled"),pluginDirectory);
+    var migrationLegacy=new Configuration{Profile=source.Device!.Profile,DevicePluginID=source.Id,AutoConnect=true,RemoteSetupCompleted=true,RemoteSetupCheckpoint=new(RemoteSetupStage.Practice,true),VoiceTyping=new(VoiceTypingMode.Everywhere,"microphone",true),ArtworkPath="first-photo.png"};
+    var library=new RemoteConfigurationLibrary(receiverMigrationTemp,migrationLegacy,catalog);
+    var other=library.Load(second.Id);
+    Check(!other.AutoConnect&&!other.RemoteSetupCompleted&&other.RemoteSetupCheckpoint==null,"another receiver never inherits reconnect or setup consent");
+    Check(other.VoiceTyping.Mode==VoiceTypingMode.Off&&other.ArtworkPath=="","another receiver never inherits OS voice typing consent or photo");
+    var file=library.StoreFor(second.Id);file.Save(migrationLegacy);var bytes=File.ReadAllBytes(file.Path);
+    Throws(()=>library.Load(second.Id),"receiver store rejects settings for a different device identity");
+    Check(File.ReadAllBytes(file.Path).SequenceEqual(bytes),"mismatched receiver settings are preserved for recovery");
+}
+finally{if(Directory.Exists(receiverMigrationTemp))Directory.Delete(receiverMigrationTemp,true);}
+var pendingVoice=new PendingVoiceStart();
+var cancelledTicket=pendingVoice.Begin();pendingVoice.Cancel();
+Check(!pendingVoice.TryComplete(cancelledTicket,true),"focus/profile cancellation invalidates delayed dictation start");
+var currentTicket=pendingVoice.Begin();
+Check(!pendingVoice.TryComplete(cancelledTicket,true)&&pendingVoice.Pending,"stale callback cannot clear a newer pending start");
+Check(!pendingVoice.TryComplete(currentTicket,false),"stopped receiver cannot commit pending dictation");
+Check(pendingVoice.TryComplete(currentTicket,true)&&!pendingVoice.Pending,"current running receiver may commit exactly one delayed start");
+Check(!pendingVoice.TryComplete(currentTicket,true),"duplicate delayed callback cannot inject another shortcut");
+var launchCatalog=new PluginCatalog(Path.Combine(root,"plugins","bundled"),Path.Combine(Path.GetTempPath(),"justvibe-launch-test-"+Guid.NewGuid()));
+var launchApp=launchCatalog.Apps.First();
+var legacyLaunch=JsonSerializer.Deserialize<Binding>("{\"name\":\"Power\",\"action\":\"Focus\"}",ConfigurationStore.Json)!;
+Check(legacyLaunch.LaunchAppID==null&&legacyLaunch.LaunchAppPath==null,"legacy Show app bindings decode without a launch selection");
+var launchConfig=new Configuration{AppPluginID=Configuration.NoSpecificAppID};
+launchConfig=launchConfig with{AppMappings=new(){[AppRouting.Key(launchConfig.DevicePluginID,launchApp.Id)]=AppMapping.From(launchConfig with{TargetAppPath="C:\\Apps\\Chosen.exe"})}};
+var launchBinding=new Binding("Power",new Usage(12,0x30),ActionKind.Focus,"power",launchApp.Id);
+launchConfig=launchConfig with{Bindings=[launchBinding]};
+var chosenLaunch=AppRouting.LaunchTarget(launchBinding,launchConfig,launchConfig,launchCatalog.Apps);
+Check(chosenLaunch.AppPluginID==launchApp.Id&&chosenLaunch.TargetAppPath=="C:\\Apps\\Chosen.exe","Power opens its selected app using the saved location");
+Check(launchConfig.AppPluginID==Configuration.NoSpecificAppID,"resolving a launch preserves the editor profile");
+var launchRoute=AppRouting.Resolve(launchConfig,launchCatalog.Apps,new ForegroundApp(Name:"Unrelated",Path:"C:\\Unrelated.exe",Instance:"42"));
+Check(launchRoute?.Bindings[0].Action==ActionKind.Focus&&launchRoute.Bindings[0].LaunchAppID==launchApp.Id,"shared routing retains the explicit Open app target");
+var explicitLaunch=launchBinding with{LaunchAppPath="C:\\Apps\\Explicit.exe"};
+Check(AppRouting.LaunchTarget(explicitLaunch,launchConfig,launchConfig,launchCatalog.Apps).TargetAppPath==explicitLaunch.LaunchAppPath,"explicitly located app takes precedence");
+Check(JsonSerializer.Deserialize<Binding>(JsonSerializer.Serialize(explicitLaunch,ConfigurationStore.Json),ConfigurationStore.Json)==explicitLaunch,"launch identity and path survive settings serialization");
+Throws(()=>AppRouting.LaunchTarget(launchBinding with{LaunchAppID="missing.app"},launchConfig,launchConfig,launchCatalog.Apps),"removed app does not fall back to another launch target");
+Throws(()=>AppRouting.LaunchTarget(legacyLaunch,launchConfig,launchConfig,launchCatalog.Apps),"shared Open app never guesses an app");
+var legacyLaunchConfig=launchConfig with{AppPluginID=launchApp.Id,TargetAppPath="C:\\Legacy.exe"};
+Check(AppRouting.LaunchTarget(legacyLaunch,legacyLaunchConfig,legacyLaunchConfig,launchCatalog.Apps).TargetAppPath=="C:\\Legacy.exe","legacy Show app retains its original profile target");
+var launchDevice=launchCatalog.Devices.First();launchConfig=launchConfig with{DevicePluginID=launchDevice.Id,Profile=launchDevice.Device!.Profile};
+var launchSwitched=PluginSelection.Select(launchConfig,launchCatalog,launchDevice.Id,launchApp.Id);
+var launchRestored=PluginSelection.Select(launchSwitched,launchCatalog,launchDevice.Id,Configuration.NoSpecificAppID);
+Check(launchRestored.Bindings.Any(b=>b.Action==ActionKind.Focus&&b.LaunchAppID==launchApp.Id),"Open app selection survives profile switching");
 Console.WriteLine($"JustVibeRemote Windows core: {passed} checks passed");

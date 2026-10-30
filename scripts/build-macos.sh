@@ -15,6 +15,8 @@ xcrun swiftc -swift-version 5 -O -target arm64-apple-macosx13.0 \
   -o "$APP/Contents/MacOS/JustVibeRemote"
 cp "$ROOT/macos/Info.plist" "$APP/Contents/Info.plist"
 cp "$ROOT/assets/branding/JustVibeRemote.icns" "$ROOT/assets/branding/JustVibeRemote.png" "$APP/Contents/Resources/"
+mkdir -p "$APP/Contents/Resources/Fonts"
+cp "$ROOT/assets/fonts/"*.ttf "$ROOT/assets/fonts/"*-OFL.txt "$ROOT/assets/fonts/README.md" "$APP/Contents/Resources/Fonts/"
 cp -R "$ROOT/plugins/bundled/." "$APP/Contents/Resources/plugins/"
 mkdir -p "$APP/Contents/Resources/PluginAuthoring/guides"
 cp -R "$ROOT/plugins/examples/device" "$APP/Contents/Resources/PluginAuthoring/device"

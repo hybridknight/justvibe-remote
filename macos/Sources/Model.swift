@@ -39,7 +39,7 @@ enum RemoteAction: String, Codable, CaseIterable {
         switch self {
         case .native: return "Keep original action"
         case .dictate: return "Dictation"
-        case .focus: return "Show app"
+        case .focus: return "Open app"
         case .send: return "Send (Return)"
         case .backspace: return "Delete previous character"
         case .escape: return "Escape"
@@ -51,6 +51,8 @@ struct Binding: Codable, Equatable {
     var usage: Usage?
     var action: RemoteAction
     var controlID: String?
+    var launchAppID: String? = nil
+    var launchAppPath: String? = nil
     static var initial: [Binding] {
         [Binding(name: "Microphone", action: .dictate),
          Binding(name: "Power", action: .native),

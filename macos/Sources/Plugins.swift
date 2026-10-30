@@ -233,7 +233,7 @@ enum PluginSelection {
         if let layout = device.device!.layout { next.bindings = try layout.bindings(preserving: next.bindings) }
         next.bindings = next.bindings.map { binding in
             var result = binding
-            if !actions.supports(result.action) || (appID == Configuration.noSpecificAppID && !configuredPair) { result.action = .native }
+            if (result.action != .focus && !actions.supports(result.action)) || (appID == Configuration.noSpecificAppID && !configuredPair) { result.action = .native }
             return result
         }
         next.devicePluginID = deviceID

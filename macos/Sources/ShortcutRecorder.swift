@@ -212,12 +212,12 @@ final class ShortcutRecorder:NSControl {
         NSColor.controlBackgroundColor.setFill();shape.fill()
         (recording ? NSColor.rvAccent:NSColor.separatorColor).setStroke();shape.lineWidth=recording ? 2:1;shape.stroke()
         let title = !message.isEmpty ? message:recording ? "Press shortcut keys…":shortcutValue.map(ShortcutCapture.display) ?? "Click to record shortcut"
-        let attributes:[NSAttributedString.Key:Any]=[.font:NSFont.systemFont(ofSize:13,weight:shortcutValue != nil && !recording ? .semibold:.regular),.foregroundColor:recording ? NSColor.rvAccent:NSColor.labelColor]
+        let attributes:[NSAttributedString.Key:Any]=[.font:WorkspaceTypography.body(13,weight:shortcutValue != nil && !recording ? .semibold:.regular),.foregroundColor:recording ? NSColor.rvAccent:NSColor.labelColor]
         let text=title as NSString
         text.draw(at:NSPoint(x:12,y:bounds.midY-text.size(withAttributes:attributes).height/2),withAttributes:attributes)
         if shortcutValue != nil && !recording && message.isEmpty {
             let hint="Click to record" as NSString
-            let style:[NSAttributedString.Key:Any]=[.font:NSFont.systemFont(ofSize:11),.foregroundColor:NSColor.secondaryLabelColor]
+            let style:[NSAttributedString.Key:Any]=[.font:WorkspaceTypography.body(11),.foregroundColor:NSColor.secondaryLabelColor]
             let size=hint.size(withAttributes:style)
             if text.size(withAttributes:attributes).width+size.width+40<bounds.width {
                 hint.draw(at:NSPoint(x:bounds.maxX-size.width-12,y:bounds.midY-size.height/2),withAttributes:style)

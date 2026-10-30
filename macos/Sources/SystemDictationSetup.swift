@@ -35,22 +35,32 @@ final class SystemDictationSetup:NSObject,NSWindowDelegate {
         recorder.setShortcut(saved.shortcut);confirmation.state=saved.confirmed ? .on:.off
         recorder.changed={ [weak self] in self?.confirmation.state = .off;self?.error.stringValue="";self?.fitDocument() }
         updatePreset()
+        scroll.contentView.scroll(to:.zero);scroll.reflectScrolledClipView(scroll.contentView)
     }
     private func text(_ value:String,size:CGFloat=13,bold:Bool=false)->NSTextField {
         let field=NSTextField(wrappingLabelWithString:value)
-        field.font = .systemFont(ofSize:size,weight:bold ? .semibold:.regular);field.textColor = .labelColor
+        field.font = WorkspaceTypography.text(size,weight:bold ? .semibold:.regular);field.textColor = .labelColor
         return field
     }
     private func add(_ view:NSView) {
-        stack.addArrangedSubview(view);view.widthAnchor.constraint(equalToConstant:592).isActive=true
+        stack.addArrangedSubview(view);view.widthAnchor.constraint(equalTo:stack.widthAnchor).isActive=true
     }
     private func build() {
-        let root=NSView();panel.contentView=root
+        let root=WorkspaceSurface(.card);panel.contentView=root
         scroll.frame=NSRect(x:0,y:64,width:640,height:panel.contentView!.bounds.height-64)
         scroll.autoresizingMask=[.width,.height];scroll.hasVerticalScroller=true;scroll.drawsBackground=false
         root.addSubview(scroll);scroll.documentView=document
-        stack.orientation = .vertical;stack.alignment = .leading;stack.spacing=10;stack.detachesHiddenViews=true
+        stack.orientation = .vertical;stack.alignment = .leading;stack.spacing=WorkspaceSpacing.controls;stack.detachesHiddenViews=true
+        document.translatesAutoresizingMaskIntoConstraints=false
+        stack.translatesAutoresizingMaskIntoConstraints=false
         document.addSubview(stack)
+        NSLayoutConstraint.activate([
+            document.widthAnchor.constraint(equalTo:scroll.contentView.widthAnchor),
+            stack.leadingAnchor.constraint(equalTo:document.leadingAnchor,constant:WorkspaceSpacing.inset),
+            stack.trailingAnchor.constraint(equalTo:document.trailingAnchor,constant:-WorkspaceSpacing.inset),
+            stack.topAnchor.constraint(equalTo:document.topAnchor,constant:WorkspaceSpacing.inset),
+            stack.bottomAnchor.constraint(equalTo:document.bottomAnchor,constant:-WorkspaceSpacing.inset),
+        ])
         add(text("Dictation in any app",size:23,bold:true))
         add(text("Choose the same shortcut option shown in macOS System Settings → Keyboard → Dictation. No need to record double-press shortcuts."))
         add(text("Use macOS Dictation",bold:true))
@@ -60,27 +70,28 @@ final class SystemDictationSetup:NSObject,NSWindowDelegate {
         add(text("macOS Dictation shortcut",bold:true))
         presetPicker.addItems(withTitles:SystemDictationShortcut.allCases.map(\.title))
         presetPicker.setAccessibilityLabel("macOS Dictation shortcut option");presetPicker.target=self;presetPicker.action=#selector(changePreset);add(presetPicker)
-        customRow.orientation = .vertical;customRow.alignment = .leading;customRow.spacing=6
+        customRow.orientation = .vertical;customRow.alignment = .leading;customRow.spacing=WorkspaceSpacing.related
         let customHelp=text("Click the field, then press a modifier plus a key, or F1–F20. Escape cancels recording.",size:12)
-        customRow.addArrangedSubview(customHelp);customHelp.widthAnchor.constraint(equalToConstant:592).isActive=true
-        customRow.addArrangedSubview(recorder);recorder.widthAnchor.constraint(equalToConstant:592).isActive=true
+        customRow.addArrangedSubview(customHelp);customHelp.widthAnchor.constraint(equalTo:customRow.widthAnchor).isActive=true
+        customRow.addArrangedSubview(recorder);recorder.widthAnchor.constraint(equalTo:customRow.widthAnchor).isActive=true
         recorder.heightAnchor.constraint(equalToConstant:38).isActive=true;recorder.setAccessibilityLabel("Record custom macOS Dictation shortcut")
         add(customRow)
-        explanation.font = .systemFont(ofSize:12);explanation.textColor = .secondaryLabelColor;add(explanation)
+        explanation.font = WorkspaceTypography.body(12);explanation.textColor = .secondaryLabelColor;add(explanation)
         confirmation.target=self;confirmation.action=#selector(clearError);add(confirmation)
         add(text("Press the remote button once to start, then again to stop. Fallback mode keeps configured native app dictation first.",size:12))
         let settings=NSButton(title:"Open macOS Keyboard settings…",target:self,action:#selector(openKeyboardSettings));settings.bezelStyle = .rounded;add(settings)
-        error.textColor = .systemRed;error.font = .systemFont(ofSize:12);add(error)
+        error.textColor = .systemRed;error.font = WorkspaceTypography.body(12);add(error)
         let cancel=NSButton(title:"Cancel",target:self,action:#selector(close));cancel.bezelStyle = .rounded;cancel.keyEquivalent="\u{1b}"
         let save=NSButton(title:"Save",target:self,action:#selector(save));save.bezelStyle = .rounded;save.keyEquivalent="\r"
         root.addSubview(cancel);root.addSubview(save)
         cancel.translatesAutoresizingMaskIntoConstraints=false;save.translatesAutoresizingMaskIntoConstraints=false
         NSLayoutConstraint.activate([
-            save.trailingAnchor.constraint(equalTo:root.trailingAnchor,constant:-24),save.bottomAnchor.constraint(equalTo:root.bottomAnchor,constant:-16),
+            save.trailingAnchor.constraint(equalTo:root.trailingAnchor,constant:-WorkspaceSpacing.inset),save.bottomAnchor.constraint(equalTo:root.bottomAnchor,constant:-16),
             save.widthAnchor.constraint(equalToConstant:100),save.heightAnchor.constraint(equalToConstant:32),
             cancel.trailingAnchor.constraint(equalTo:save.leadingAnchor,constant:-12),cancel.centerYAnchor.constraint(equalTo:save.centerYAnchor),
             cancel.widthAnchor.constraint(equalToConstant:100),cancel.heightAnchor.constraint(equalToConstant:32),
         ])
+        WorkspaceTypography.apply(to:root)
         panel.defaultButtonCell=save.cell as? NSButtonCell
         panel.initialFirstResponder=presetPicker
     }
@@ -95,10 +106,7 @@ final class SystemDictationSetup:NSObject,NSWindowDelegate {
         fitDocument()
     }
     private func fitDocument() {
-        stack.layoutSubtreeIfNeeded()
-        let height=stack.fittingSize.height
-        stack.frame=NSRect(x:24,y:20,width:592,height:height)
-        document.frame=NSRect(x:0,y:0,width:640,height:max(scroll.contentSize.height,height+40))
+        panel.contentView?.layoutSubtreeIfNeeded()
     }
     @objc private func clearError() { error.stringValue="";fitDocument() }
     @objc private func openKeyboardSettings() {

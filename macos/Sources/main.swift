@@ -30,6 +30,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private let systemDictationAppStatus=NSTextField(wrappingLabelWithString:"")
     private let bindingPicker = NSPopUpButton()
     private let actionPicker = NSPopUpButton()
+    private let launchAppButton=NSButton()
     private let linked = NSTextField(labelWithString: "Not linked yet")
     private let hint = NSTextField(wrappingLabelWithString: "")
     private let actionHelp = NSTextField(wrappingLabelWithString: "")
@@ -77,7 +78,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private let overviewVoice = NSTextField(wrappingLabelWithString: "")
     private var overviewAction: NSButton!
     private let pluginSummary = NSTextField(wrappingLabelWithString: "")
-    private let pluginSearch=NSSearchField()
+    private let pluginSearch=WorkspaceSearchField()
     private let pluginFilter=NSSegmentedControl(labels:["All","Remotes","Apps"],trackingMode:.selectOne,target:nil,action:nil)
     private let pluginList=NSStackView()
     private var pluginListSignature=""
@@ -152,11 +153,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                let page=WorkspacePage(rawValue:CommandLine.arguments[pageIndex+1]) { remoteWorkspaceOpen=page.isRemoteScoped;showPage(page) }
             if CommandLine.arguments.contains("--preview-compact") { window.setContentSize(window.contentMinSize) }
             if CommandLine.arguments.contains("--preview-microphone"),let index=controller.microphoneIndex { selectedIndex=index;refresh() }
-            root.layoutSubtreeIfNeeded()
-            if let bitmap=root.bitmapImageRepForCachingDisplay(in:root.bounds) {
-                root.cacheDisplay(in:root.bounds,to:bitmap)
-                if let png=bitmap.representation(using:.png,properties:[:]) { try? png.write(to:URL(fileURLWithPath:CommandLine.arguments[index+1]));print("Rendered JustVibe Remote preview") }
+            if CommandLine.arguments.contains("--preview-dictation") {
+                let setup=SystemDictationSetup(controller:controller,parent:window)
+                if let view=setup.panel.contentView { try? WorkspacePreview.write(view,to:URL(fileURLWithPath:CommandLine.arguments[index+1])) }
+                return
             }
+            do {
+                try WorkspacePreview.write(root,to:URL(fileURLWithPath:CommandLine.arguments[index+1]))
+                print("Rendered JustVibe Remote preview")
+            } catch { print(error.localizedDescription) }
             return
         }
         if let index=CommandLine.arguments.firstIndex(of:"--render-add-remote-preview"),CommandLine.arguments.count>index+1 {
@@ -187,29 +192,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func buildWorkspace(in root:NSView) {
         let sidebar=WorkspaceSurface(.sidebar)
         root.addSubview(sidebar);sidebar.translatesAutoresizingMaskIntoConstraints=false
-        NSLayoutConstraint.activate([sidebar.leadingAnchor.constraint(equalTo:root.leadingAnchor),sidebar.topAnchor.constraint(equalTo:root.topAnchor),sidebar.bottomAnchor.constraint(equalTo:root.bottomAnchor),sidebar.widthAnchor.constraint(equalToConstant:218)])
+        NSLayoutConstraint.activate([sidebar.leadingAnchor.constraint(equalTo:root.leadingAnchor),sidebar.topAnchor.constraint(equalTo:root.topAnchor),sidebar.bottomAnchor.constraint(equalTo:root.bottomAnchor),sidebar.widthAnchor.constraint(equalToConstant:240)])
         let mark=BrandMark(frame:.zero)
         mark.widthAnchor.constraint(equalToConstant:44).isActive=true;mark.heightAnchor.constraint(equalToConstant:44).isActive=true
-        let wordmark=vertical(spacing:3)
-        wordmark.addArrangedSubview(label("JustVibe",size:17,weight:.bold))
-        wordmark.addArrangedSubview(label("Remote",size:11,weight:.medium))
-        let identity=horizontal([mark,wordmark,spacer()],spacing:10)
+        let wordmark=vertical(spacing:WorkspaceSpacing.tight)
+        let brandName=label("JustVibe",size:21,weight:.bold);brandName.font=WorkspaceTypography.heading(21,weight:.bold)
+        wordmark.addArrangedSubview(brandName)
+        let brandDetail=label("Remote",size:12,weight:.medium);brandDetail.font=WorkspaceTypography.body(12,weight:.medium);brandDetail.textColor = .rvMuted
+        wordmark.addArrangedSubview(brandDetail)
+        let identity=horizontal([mark,wordmark,spacer()],spacing:WorkspaceSpacing.controls)
         pin(identity,to:sidebar,top:28,left:18,right:14)
         sidebar.addSubview(sidebarNavigation);sidebarNavigation.translatesAutoresizingMaskIntoConstraints=false
         sidebarNavigation.selected={ [weak self] page in self?.showPage(page) }
-        NSLayoutConstraint.activate([sidebarNavigation.leadingAnchor.constraint(equalTo:sidebar.leadingAnchor,constant:8),sidebarNavigation.trailingAnchor.constraint(equalTo:sidebar.trailingAnchor,constant:-8),sidebarNavigation.topAnchor.constraint(equalTo:identity.bottomAnchor,constant:20),sidebarNavigation.bottomAnchor.constraint(equalTo:sidebar.bottomAnchor,constant:-20)])
+        NSLayoutConstraint.activate([sidebarNavigation.leadingAnchor.constraint(equalTo:sidebar.leadingAnchor,constant:12),sidebarNavigation.trailingAnchor.constraint(equalTo:sidebar.trailingAnchor,constant:-12),sidebarNavigation.topAnchor.constraint(equalTo:identity.bottomAnchor,constant:28),sidebarNavigation.bottomAnchor.constraint(equalTo:sidebar.bottomAnchor,constant:-20)])
 
-        let heading=vertical(spacing:5);pageTitle.font = .systemFont(ofSize:30,weight:.bold);pageTitle.textColor = .rvInk;heading.addArrangedSubview(pageTitle)
-        pageSubtitle.font = .systemFont(ofSize:13);pageSubtitle.textColor = .rvMuted;heading.addArrangedSubview(pageSubtitle)
+        let heading=vertical(spacing:WorkspaceSpacing.related);pageTitle.font = WorkspaceTypography.heading(30,weight:.bold);pageTitle.textColor = .rvInk;heading.addArrangedSubview(pageTitle)
+        pageSubtitle.font = WorkspaceTypography.body(13);pageSubtitle.textColor = .rvMuted;heading.addArrangedSubview(pageSubtitle)
         heading.setContentCompressionResistancePriority(.defaultLow,for:.horizontal)
         pageSubtitle.setContentCompressionResistancePriority(.defaultLow,for:.horizontal)
-        badge.font = .systemFont(ofSize:11,weight:.medium);badge.textColor = .rvMuted
+        badge.font = WorkspaceTypography.body(11,weight:.medium);badge.textColor = .rvMuted
         connectButton=button("Connect remote",#selector(connect),primary:true)
         voiceStop=button("Stop voice",#selector(stopVoice));voiceStop.isHidden=true
-        let header=horizontal([heading,spacer(),voiceStop],spacing:12)
+        let header=horizontal([heading,spacer(),voiceStop],spacing:WorkspaceSpacing.controls)
         root.addSubview(header);header.translatesAutoresizingMaskIntoConstraints=false
         NSLayoutConstraint.activate([header.leadingAnchor.constraint(equalTo:sidebar.trailingAnchor,constant:28),header.trailingAnchor.constraint(equalTo:root.trailingAnchor,constant:-28),header.topAnchor.constraint(equalTo:root.topAnchor,constant:24),header.heightAnchor.constraint(equalToConstant:68)])
-        status.font = .systemFont(ofSize:11);status.textColor = .rvMuted
+        status.font = WorkspaceTypography.body(11);status.textColor = .rvMuted
         root.addSubview(status);status.translatesAutoresizingMaskIntoConstraints=false
         NSLayoutConstraint.activate([status.leadingAnchor.constraint(equalTo:sidebar.trailingAnchor,constant:30),status.trailingAnchor.constraint(equalTo:root.trailingAnchor,constant:-28),status.bottomAnchor.constraint(equalTo:root.bottomAnchor,constant:-16),status.heightAnchor.constraint(equalToConstant:32)])
         root.addSubview(pageHost);pageHost.translatesAutoresizingMaskIntoConstraints=false
@@ -218,10 +225,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         for page in WorkspacePage.allCases { guard let view=pages[page] else { continue };pageHost.addSubview(view);view.translatesAutoresizingMaskIntoConstraints=false
             NSLayoutConstraint.activate([view.leadingAnchor.constraint(equalTo:pageHost.leadingAnchor),view.trailingAnchor.constraint(equalTo:pageHost.trailingAnchor),view.topAnchor.constraint(equalTo:pageHost.topAnchor),view.bottomAnchor.constraint(equalTo:pageHost.bottomAnchor)])
         }
+        WorkspaceTypography.apply(to:root)
         showPage(.remotes)
     }
 
-    private func scrollPage(_ content:NSStackView,maximumWidth:CGFloat? = nil)->NSView {
+    private func scrollPage(_ content:NSStackView,maximumWidth:CGFloat? = nil,trailingInset:CGFloat = 0)->NSView {
         let scroll=NSScrollView();scroll.drawsBackground=false;scroll.hasVerticalScroller=true;scroll.autohidesScrollers=true
         let document=WorkspaceDocument();document.translatesAutoresizingMaskIntoConstraints=false;scroll.documentView=document
         content.translatesAutoresizingMaskIntoConstraints=false;document.addSubview(content)
@@ -229,13 +237,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         if let maximumWidth {
             let fill=content.widthAnchor.constraint(equalTo:document.widthAnchor);fill.priority = .defaultHigh
             NSLayoutConstraint.activate([fill,content.widthAnchor.constraint(lessThanOrEqualToConstant:maximumWidth),content.trailingAnchor.constraint(lessThanOrEqualTo:document.trailingAnchor)])
-        } else { content.trailingAnchor.constraint(equalTo:document.trailingAnchor).isActive=true }
+        } else { content.trailingAnchor.constraint(equalTo:document.trailingAnchor,constant:-trailingInset).isActive=true }
         return scroll
     }
     private func section(_ title:String,_ detail:String? = nil)->NSStackView {
-        let content=vertical(spacing:10)
+        let content=vertical(spacing:WorkspaceSpacing.controls)
         content.addArrangedSubview(label(title,size:16,weight:.semibold))
-        if let detail { let text=NSTextField(wrappingLabelWithString:detail);text.font = .systemFont(ofSize:12);text.textColor = .rvMuted;content.addArrangedSubview(text) }
+        if let detail { let text=NSTextField(wrappingLabelWithString:detail);text.font = WorkspaceTypography.body(12);text.textColor = .rvMuted;content.addArrangedSubview(text) }
         return content
     }
     private func addCard(_ content:NSStackView,to stack:NSStackView) {
@@ -243,11 +251,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             child.setContentCompressionResistancePriority(.defaultLow,for:.horizontal)
             child.widthAnchor.constraint(lessThanOrEqualTo:content.widthAnchor).isActive=true
         }
-        let panel=card(content,padding:20);stack.addArrangedSubview(panel);panel.widthAnchor.constraint(equalTo:stack.widthAnchor).isActive=true
+        let panel=card(content,padding:WorkspaceSpacing.card);stack.addArrangedSubview(panel);panel.widthAnchor.constraint(equalTo:stack.widthAnchor).isActive=true
     }
     private func makeRemotes()->NSView {
-        let stack=vertical(spacing:18)
-        remoteLibrary.orientation = .vertical;remoteLibrary.alignment = .leading;remoteLibrary.spacing=14
+        let stack=vertical(spacing:WorkspaceSpacing.page)
+        remoteLibrary.orientation = .vertical;remoteLibrary.alignment = .leading;remoteLibrary.spacing=WorkspaceSpacing.section
         stack.addArrangedSubview(remoteLibrary);remoteLibrary.widthAnchor.constraint(equalTo:stack.widthAnchor).isActive=true
         rebuildRemoteLibrary()
         return scrollPage(stack)
@@ -264,21 +272,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             let artwork=BrandMark(frame:.zero)
             artwork.widthAnchor.constraint(equalToConstant:160).isActive=true
             artwork.heightAnchor.constraint(equalToConstant:160).isActive=true
-            let details=vertical(spacing:16)
+            let details=vertical(spacing:WorkspaceSpacing.section)
             details.addArrangedSubview(welcome)
             details.addArrangedSubview(button("Add a new remote…",#selector(addRemote),primary:true))
             details.addArrangedSubview(label("Start with one. Add more whenever you need them.",size:12,color:.rvMuted))
-            let panel=card(horizontal([artwork,details,spacer()],spacing:28),padding:28)
+            let panel=card(horizontal([artwork,details,spacer()],spacing:WorkspaceSpacing.inset),padding:WorkspaceSpacing.card)
             remoteLibrary.addArrangedSubview(panel);panel.widthAnchor.constraint(equalTo:remoteLibrary.widthAnchor).isActive=true
             return
         }
-        let intro=horizontal([label("YOUR COLLECTION",size:10,weight:.semibold,color:.rvMuted),spacer(),label("\(libraryDevices.count) installed",size:11,color:.rvMuted)],spacing:12)
+        let intro=horizontal([label("YOUR COLLECTION",size:10,weight:.semibold,color:.rvMuted),spacer(),label("\(libraryDevices.count) installed",size:11,color:.rvMuted)],spacing:WorkspaceSpacing.controls)
         remoteLibrary.addArrangedSubview(intro)
         intro.widthAnchor.constraint(equalTo:remoteLibrary.widthAnchor).isActive=true
         for (remoteIndex,remote) in libraryDevices.enumerated() {
-            let content=vertical(spacing:14)
+            let content=vertical(spacing:WorkspaceSpacing.section)
             content.addArrangedSubview(label(String(format:"REMOTE %02d",remoteIndex+1),size:10,weight:.semibold,color:.rvAccent))
-            let name=NSTextField(wrappingLabelWithString:remote.name);name.font = .systemFont(ofSize:23,weight:.bold);name.textColor = .rvInk
+            let name=NSTextField(wrappingLabelWithString:remote.name);name.font = WorkspaceTypography.heading(23,weight:.bold);name.textColor = .rvInk
             let session=sessions.controllers[remote.id]
             let connected=session?.running == true && (session?.connected ?? 0)>0
             let state=connected ? "Connected" : session?.running == true ? "Waiting for receiver" : "Not connected"
@@ -294,23 +302,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 content.addArrangedSubview(label("Setup in progress · pick up where you left off",size:12,color:.rvMuted))
             }
             if let session,!session.running,!session.status.hasPrefix("Ready to set up"),!session.status.hasPrefix("Stopped;") {
-                let issue=NSTextField(wrappingLabelWithString:session.status);issue.font = .systemFont(ofSize:12);issue.textColor = .systemOrange;content.addArrangedSubview(issue)
+                let issue=NSTextField(wrappingLabelWithString:session.status);issue.font = WorkspaceTypography.body(12);issue.textColor = .systemOrange;content.addArrangedSubview(issue)
             }
             let open=button(session?.config.remoteSetupCompleted == true ? "Open remote →":session?.config.remoteSetupCheckpoint == nil ? "Set up remote →":"Continue setup →",#selector(openRemote(_:)),primary:true);open.identifier=NSUserInterfaceItemIdentifier(remote.id);open.setAccessibilityLabel("Open \(remote.name)")
             let connection=button(session?.running == true ? "Disconnect":"Connect",#selector(connectRemote(_:)))
             connection.identifier=NSUserInterfaceItemIdentifier(remote.id);connection.setAccessibilityLabel("\(session?.running == true ? "Disconnect":"Connect") \(remote.name)")
-            content.addArrangedSubview(horizontal([open,connection,spacer()],spacing:10))
+            content.addArrangedSubview(horizontal([open,connection,spacer()],spacing:WorkspaceSpacing.controls))
             let art=RemoteArtworkView(frame:.zero);art.reference=session?.artwork.image;art.remoteLayout=remote.device?.layout
             let stage=WorkspaceSurface(.artwork)
             stage.widthAnchor.constraint(equalToConstant:158).isActive=true;stage.heightAnchor.constraint(equalToConstant:224).isActive=true
             stage.addSubview(art);art.translatesAutoresizingMaskIntoConstraints=false
             NSLayoutConstraint.activate([art.centerXAnchor.constraint(equalTo:stage.centerXAnchor),art.centerYAnchor.constraint(equalTo:stage.centerYAnchor),art.widthAnchor.constraint(equalToConstant:104),art.heightAnchor.constraint(equalToConstant:190)])
-            let row=horizontal([stage,content,spacer()],spacing:28)
-            let panel=card(row,padding:24);remoteLibrary.addArrangedSubview(panel);panel.widthAnchor.constraint(equalTo:remoteLibrary.widthAnchor).isActive=true
+            let row=horizontal([stage,content,spacer()],spacing:WorkspaceSpacing.inset)
+            let panel=card(row,padding:WorkspaceSpacing.card);remoteLibrary.addArrangedSubview(panel);panel.widthAnchor.constraint(equalTo:remoteLibrary.widthAnchor).isActive=true
         }
         let more=section("Add another remote","Give another remote its own apps and controls.")
-        let footer=horizontal([more,spacer(),button("Add a new remote…",#selector(addRemote))],spacing:20)
-        let panel=card(footer,padding:20)
+        let footer=horizontal([more,spacer(),button("Add a new remote…",#selector(addRemote))],spacing:WorkspaceSpacing.page)
+        let panel=card(footer,padding:WorkspaceSpacing.card)
         remoteLibrary.addArrangedSubview(panel);panel.widthAnchor.constraint(equalTo:remoteLibrary.widthAnchor).isActive=true
     }
     @objc private func openRemote(_ sender:NSButton) {
@@ -344,51 +352,51 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc private func openPlugins() { showPage(.plugins) }
 
     private func makeOverview()->NSView {
-        let stack=vertical(spacing:16)
-        let hero=vertical(spacing:12)
+        let stack=vertical(spacing:WorkspaceSpacing.page)
+        let hero=vertical(spacing:WorkspaceSpacing.controls)
         hero.addArrangedSubview(label("YOUR NEXT STEP",size:10,weight:.semibold,color:.rvAccent))
-        overviewTitle.font = .systemFont(ofSize:23,weight:.bold);overviewTitle.textColor = .rvInk;hero.addArrangedSubview(overviewTitle)
-        overviewDetail.font = .systemFont(ofSize:13);overviewDetail.textColor = .rvMuted;hero.addArrangedSubview(overviewDetail)
+        overviewTitle.font = WorkspaceTypography.heading(23,weight:.bold);overviewTitle.textColor = .rvInk;hero.addArrangedSubview(overviewTitle)
+        overviewDetail.font = WorkspaceTypography.body(13);overviewDetail.textColor = .rvMuted;hero.addArrangedSubview(overviewDetail)
         overviewAction=button("Continue setup",#selector(overviewNext),primary:true);hero.addArrangedSubview(overviewAction)
         overviewArtwork.widthAnchor.constraint(equalToConstant:110).isActive=true;overviewArtwork.heightAnchor.constraint(equalToConstant:180).isActive=true
         hero.setContentCompressionResistancePriority(.defaultLow,for:.horizontal)
         let stage=WorkspaceSurface(.artwork)
         stage.addSubview(overviewArtwork);overviewArtwork.translatesAutoresizingMaskIntoConstraints=false
         NSLayoutConstraint.activate([stage.widthAnchor.constraint(equalToConstant:154),stage.heightAnchor.constraint(equalToConstant:208),overviewArtwork.centerXAnchor.constraint(equalTo:stage.centerXAnchor),overviewArtwork.centerYAnchor.constraint(equalTo:stage.centerYAnchor)])
-        let heroPanel=card(horizontal([hero,spacer(),stage],spacing:24),padding:24)
+        let heroPanel=card(horizontal([hero,spacer(),stage],spacing:WorkspaceSpacing.page),padding:WorkspaceSpacing.card)
         stack.addArrangedSubview(heroPanel);heroPanel.widthAnchor.constraint(equalTo:stack.widthAnchor).isActive=true
         let health=section("This remote")
         for (title,field,selector) in [("Remote",overviewConnection,#selector(openDevices)),("App profile",overviewApp,#selector(openApps)),("Voice input",overviewVoice,#selector(openVoice))] {
-            field.font = .systemFont(ofSize:12);field.textColor = .rvMuted
-            let description=vertical(spacing:4);description.addArrangedSubview(label(title,size:13,weight:.semibold));description.addArrangedSubview(field)
-            let row=horizontal([description,spacer(),button("Review",selector)],spacing:16);health.addArrangedSubview(row);row.widthAnchor.constraint(equalTo:health.widthAnchor).isActive=true
+            field.font = WorkspaceTypography.body(12);field.textColor = .rvMuted
+            let description=vertical(spacing:WorkspaceSpacing.tight);description.addArrangedSubview(label(title,size:13,weight:.semibold));description.addArrangedSubview(field)
+            let row=horizontal([description,spacer(),button("Review",selector)],spacing:WorkspaceSpacing.section);health.addArrangedSubview(row);row.widthAnchor.constraint(equalTo:health.widthAnchor).isActive=true
         }
         addCard(health,to:stack)
         let start=section("Configure this remote","Start with the buttons you use most. You can link the rest whenever you need them.")
-        start.addArrangedSubview(horizontal([button("Customize buttons",#selector(openButtons)),button("Voice & microphone",#selector(openVoice)),spacer()],spacing:10))
+        start.addArrangedSubview(horizontal([button("Customize buttons",#selector(openButtons)),button("Voice & microphone",#selector(openVoice)),spacer()],spacing:WorkspaceSpacing.controls))
         addCard(start,to:stack)
         return scrollPage(stack)
     }
     private func makeButtonTest()->NSView {
         let page=NSView()
-        let intro=vertical(spacing:12)
-        let testInfo=vertical(spacing:4)
-        buttonTestTitle.font = .systemFont(ofSize:13,weight:.semibold);buttonTestTitle.textColor = .rvAccent
+        let intro=vertical(spacing:WorkspaceSpacing.controls)
+        let testInfo=vertical(spacing:WorkspaceSpacing.tight)
+        buttonTestTitle.font = WorkspaceTypography.body(13,weight:.semibold);buttonTestTitle.textColor = .rvAccent
         testInfo.addArrangedSubview(buttonTestTitle)
-        buttonTestStatus.font = .systemFont(ofSize:11);buttonTestStatus.textColor = .rvMuted
+        buttonTestStatus.font = WorkspaceTypography.body(11);buttonTestStatus.textColor = .rvMuted
         testInfo.addArrangedSubview(buttonTestStatus)
         testConnectButton=button("Connect to test",#selector(connect))
         testInfo.addArrangedSubview(button("Back to buttons",#selector(openButtons)))
-        let testBanner=card(horizontal([testInfo,spacer(),testConnectButton],spacing:12),padding:12)
+        let testBanner=card(horizontal([testInfo,spacer(),testConnectButton],spacing:WorkspaceSpacing.controls),padding:12)
         intro.addArrangedSubview(testBanner);testBanner.widthAnchor.constraint(equalTo:intro.widthAnchor).isActive=true
         buttonTestStatus.widthAnchor.constraint(lessThanOrEqualTo:intro.widthAnchor,constant:-170).isActive=true
         let artwork=WorkspaceSurface(.artwork)
         let linkingHint=NSTextField(wrappingLabelWithString:"Linked buttons light up when pressed. To test an unlinked button, click it on the picture, then press that same button on your remote. Its link is shared across app profiles.")
-        linkingHint.font = .systemFont(ofSize:12);linkingHint.textColor = .rvMuted
+        linkingHint.font = WorkspaceTypography.body(12);linkingHint.textColor = .rvMuted
         intro.addArrangedSubview(linkingHint);linkingHint.widthAnchor.constraint(equalTo:intro.widthAnchor).isActive=true
-        buttonTestSelection.font = .systemFont(ofSize:12,weight:.medium)
+        buttonTestSelection.font = WorkspaceTypography.body(12,weight:.medium)
         testLearnButton=button("Link button",#selector(learn));testCancelButton=button("Cancel linking",#selector(cancelLearning))
-        let linkingControls=horizontal([buttonTestSelection,spacer(),testLearnButton!,testCancelButton!],spacing:12)
+        let linkingControls=horizontal([buttonTestSelection,spacer(),testLearnButton!,testCancelButton!],spacing:WorkspaceSpacing.controls)
         intro.addArrangedSubview(linkingControls);linkingControls.widthAnchor.constraint(equalTo:intro.widthAnchor).isActive=true
         buttonTestCanvas.testing=true
         buttonTestCanvas.selected={ [weak self] id in
@@ -408,46 +416,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func makeButtons()->NSView {
         let page=NSView()
         appIconSelector.selected={ [weak self] appID in self?.selectAppProfile(appID) }
-        let intro=vertical(spacing:4)
+        let intro=vertical(spacing:WorkspaceSpacing.tight)
         intro.addArrangedSubview(appIconSelector)
         appIconSelector.widthAnchor.constraint(equalTo:intro.widthAnchor).isActive=true
         appIconSelector.heightAnchor.constraint(equalToConstant:88).isActive=true
-        progress.font = .systemFont(ofSize:11);progress.textColor = .rvMuted
-        intro.addArrangedSubview(horizontal([label("Link your remote’s buttons and choose their actions.",size:11,color:.rvMuted),spacer(),progress],spacing:8))
+        progress.font = WorkspaceTypography.body(11);progress.textColor = .rvMuted
+        intro.addArrangedSubview(horizontal([label("Link your remote’s buttons and choose their actions.",size:11,color:.rvMuted),spacer(),progress],spacing:WorkspaceSpacing.related))
         intro.arrangedSubviews.last?.widthAnchor.constraint(equalTo:intro.widthAnchor).isActive=true
         mappingBoard=RemoteMappingBoard(canvas:canvas)
         mappingBoard.selected={ [weak self] id in self?.selectControl(id) }
         mappingBoard.assigned={ [weak self] id,action in
             guard let self else { return };self.selectControl(id)
-            var config=self.controller.config;config.bindings[self.selectedIndex].action=action
-            do { try self.controller.update(config);self.refresh() } catch { self.show(error) }
+            self.assignAction(action)
         }
         mappingBoard.learn={ [weak self] id in self?.selectControl(id);self?.learn() }
         mappingBoard.cancelLearning={ [weak self] in self?.cancelLearning() }
         canvas.selected={ [weak self] id in self?.selectControl(id) }
         // Keep the complete remote and its mappings in the available workspace.
         // The inspector sits beside it, so it never reduces the diagram's height.
-        let physical=vertical(spacing:6)
+        let physical=vertical(spacing:WorkspaceSpacing.related)
         physical.addArrangedSubview(label("REMOTE BUTTON",size:10,weight:.semibold,color:.rvMuted))
         bindingPicker.target=self;bindingPicker.action=#selector(pickBinding);bindingPicker.setAccessibilityLabel("Selected remote button")
         physical.addArrangedSubview(bindingPicker)
-        linked.font = .systemFont(ofSize:11,weight:.medium);physical.addArrangedSubview(linked)
+        linked.font = WorkspaceTypography.body(11,weight:.medium);physical.addArrangedSubview(linked)
         learnButton=button("Link button",#selector(learn));cancelButton=button("Cancel",#selector(cancelLearning));cancelButton.isHidden=true
-        physical.addArrangedSubview(horizontal([learnButton,cancelButton],spacing:4))
-        let assignment=vertical(spacing:6)
+        physical.addArrangedSubview(horizontal([learnButton,cancelButton],spacing:WorkspaceSpacing.tight))
+        let assignment=vertical(spacing:WorkspaceSpacing.related)
         assignment.addArrangedSubview(label("ACTION",size:10,weight:.semibold,color:.rvMuted))
         actionPicker.target=self;actionPicker.action=#selector(changeAction);actionPicker.setAccessibilityLabel("Button action")
         assignment.addArrangedSubview(actionPicker)
-        actionHelp.font = .systemFont(ofSize:11);actionHelp.textColor = .rvMuted
+        launchAppButton.title="Choose app…";launchAppButton.bezelStyle = .rounded;launchAppButton.target=self;launchAppButton.action=#selector(chooseLaunchApp)
+        assignment.addArrangedSubview(launchAppButton)
+        actionHelp.font = WorkspaceTypography.body(11);actionHelp.textColor = .rvMuted
         actionHelp.maximumNumberOfLines=3;actionHelp.cell?.wraps=true;assignment.addArrangedSubview(actionHelp)
-        voiceSection.orientation = .vertical;voiceSection.alignment = .leading;voiceSection.spacing=6
+        voiceSection.orientation = .vertical;voiceSection.alignment = .leading;voiceSection.spacing=WorkspaceSpacing.related
         voiceSection.addArrangedSubview(label("APP DICTATION SHORTCUT",size:10,weight:.semibold,color:.rvMuted))
-        dictationBinding.font = .systemFont(ofSize:19,weight:.semibold);dictationBinding.textColor = .rvAccent
+        dictationBinding.font = WorkspaceTypography.body(19,weight:.semibold);dictationBinding.textColor = .rvAccent
         voiceSection.addArrangedSubview(dictationBinding)
-        dictationBindingHelp.font = .systemFont(ofSize:11);dictationBindingHelp.textColor = .rvMuted
+        dictationBindingHelp.font = WorkspaceTypography.body(11);dictationBindingHelp.textColor = .rvMuted
         dictationBindingHelp.maximumNumberOfLines=3;voiceSection.addArrangedSubview(dictationBindingHelp)
         voiceSection.addArrangedSubview(button("Review voice settings →",#selector(openVoice)))
-        let columns=vertical(spacing:22)
+        let columns=vertical(spacing:WorkspaceSpacing.page)
         columns.addArrangedSubview(label("Button details",size:16,weight:.semibold))
         for section in [physical,assignment,voiceSection] {
             columns.addArrangedSubview(section)
@@ -461,8 +470,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
         actionHelp.widthAnchor.constraint(equalTo:assignment.widthAnchor).isActive=true
         dictationBindingHelp.widthAnchor.constraint(equalTo:voiceSection.widthAnchor).isActive=true
-        let inspector=card(columns,padding:18)
-        let testLink=horizontal([spacer(),button("Button test…",#selector(openButtonTest))],spacing:8)
+        let inspector=card(columns,padding:WorkspaceSpacing.section)
+        let testLink=horizontal([spacer(),button("Button test…",#selector(openButtonTest))],spacing:WorkspaceSpacing.related)
         for view in [intro,mappingBoard!,inspector,testLink] { page.addSubview(view);view.translatesAutoresizingMaskIntoConstraints=false }
         NSLayoutConstraint.activate([
             intro.topAnchor.constraint(equalTo:page.topAnchor),intro.leadingAnchor.constraint(equalTo:page.leadingAnchor),intro.trailingAnchor.constraint(equalTo:page.trailingAnchor),
@@ -473,7 +482,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         return page
     }
     private func makeVoice()->NSView {
-        let stack=vertical(spacing:16)
+        let stack=vertical(spacing:WorkspaceSpacing.page)
         let mic=section("Hear your remote", "Choose a microphone, record a short clip, then play it back.")
         voiceMicrophoneHost.orientation = .vertical;voiceMicrophoneHost.alignment = .leading
         mic.addArrangedSubview(voiceMicrophoneHost);addCard(mic,to:stack)
@@ -508,7 +517,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let alert=NSAlert();alert.messageText="Dictation shortcut for \(controller.appPlugin?.name ?? "this app")"
         alert.informativeText="Match the shortcut configured in this app. These settings apply only to this app profile."
         alert.addButton(withTitle:"Save");alert.addButton(withTitle:"Cancel")
-        let content=vertical(spacing:12)
+        let content=vertical(spacing:WorkspaceSpacing.controls)
         content.addArrangedSubview(shortcut);shortcut.setAccessibilityLabel("Record dictation shortcut")
         content.addArrangedSubview(label("Click the field and press your shortcut keys. Esc cancels recording.",size:12,color:.rvMuted))
         content.addArrangedSubview(confirmed);content.addArrangedSubview(toggle)
@@ -519,22 +528,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         loadEditable();refresh()
     }
     private func makeApps()->NSView {
-        let stack=vertical(spacing:16)
-        let heading=horizontal([label("Supported apps",size:16,weight:.semibold),spacer(),button("Add app…",#selector(addApplication))],spacing:12)
+        let stack=vertical(spacing:WorkspaceSpacing.page)
+        let heading=horizontal([label("Supported apps",size:16,weight:.semibold),spacer(),button("Add app…",#selector(addApplication))],spacing:WorkspaceSpacing.controls)
         stack.addArrangedSubview(heading);heading.widthAnchor.constraint(equalTo:stack.widthAnchor).isActive=true
         let universal=section("Dictation in any app","Use macOS Dictation with the remote’s microphone button, including apps without a profile.")
-        systemDictationAppStatus.font = .systemFont(ofSize:12);systemDictationAppStatus.textColor = .rvMuted
+        systemDictationAppStatus.font = WorkspaceTypography.body(12);systemDictationAppStatus.textColor = .rvMuted
         universal.addArrangedSubview(systemDictationAppStatus)
         universal.addArrangedSubview(button("Set up dictation in any app…",#selector(editSystemDictation)))
-        addCard(universal,to:stack)
         let placeholder=AppDropPlaceholder(frame:.zero)
         placeholder.target=self;placeholder.action=#selector(addApplication)
         stack.addArrangedSubview(placeholder)
         placeholder.widthAnchor.constraint(equalTo:stack.widthAnchor).isActive=true
         placeholder.heightAnchor.constraint(equalToConstant:100).isActive=true
-        supportedAppList.orientation = .vertical;supportedAppList.alignment = .leading;supportedAppList.spacing=12
+        supportedAppList.orientation = .vertical;supportedAppList.alignment = .leading;supportedAppList.spacing=WorkspaceSpacing.controls
         stack.addArrangedSubview(supportedAppList);supportedAppList.widthAnchor.constraint(equalTo:stack.widthAnchor).isActive=true
         rebuildSupportedApps()
+        addCard(universal,to:stack)
         let drop=AppListDropContainer(frame:.zero)
         drop.highlightChanged={ [weak placeholder] active in placeholder?.receiving=active }
         drop.dropped={ [weak self] url in self?.addDroppedApplication(at:url) }
@@ -553,7 +562,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             let url = !configured.isEmpty ? URL(fileURLWithPath:configured) : plugin.app?.targets["macos"]?.bundleIds.compactMap { NSWorkspace.shared.urlForApplication(withBundleIdentifier:$0) }.first
             icon.image=url.map { NSWorkspace.shared.icon(forFile:$0.path) } ?? NSImage(systemSymbolName:"app.fill",accessibilityDescription:nil)
             icon.widthAnchor.constraint(equalToConstant:42).isActive=true;icon.heightAnchor.constraint(equalToConstant:42).isActive=true
-            let info=vertical(spacing:5)
+            let info=vertical(spacing:WorkspaceSpacing.related)
             info.addArrangedSubview(label(plugin.name,size:16,weight:.semibold))
             info.addArrangedSubview(label(plugin.app?.supports(.dictate) == true ? "Buttons and voice input":"Button controls",size:12,color:.rvMuted))
             info.setContentCompressionResistancePriority(.defaultLow,for:.horizontal)
@@ -565,7 +574,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 voice.identifier=NSUserInterfaceItemIdentifier(plugin.id);items.append(voice)
             }
             items.append(edit)
-            let panel=card(horizontal(items,spacing:16),padding:18)
+            let panel=card(horizontal(items,spacing:WorkspaceSpacing.section),padding:WorkspaceSpacing.section)
             supportedAppList.addArrangedSubview(panel);panel.widthAnchor.constraint(equalTo:supportedAppList.widthAnchor).isActive=true
         }
         if apps.isEmpty {
@@ -580,47 +589,54 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         } catch { show(error) }
     }
     private func makeDevices()->NSView {
-        let stack=vertical(spacing:16)
+        let stack=vertical(spacing:WorkspaceSpacing.page)
         let device=section("Connection","Connect this remote’s receiver. To configure a different remote, return to Remotes.")
-        device.addArrangedSubview(horizontal([badge,spacer(),connectButton],spacing:12))
-        device.addArrangedSubview(horizontal([button("Connection & permissions…",#selector(checkConnection)),button("Cursor speed…",#selector(setupCursor)),spacer()],spacing:10))
+        device.addArrangedSubview(horizontal([badge,spacer(),connectButton],spacing:WorkspaceSpacing.controls))
+        device.addArrangedSubview(horizontal([button("Connection & permissions…",#selector(checkConnection)),button("Cursor speed…",#selector(setupCursor)),spacer()],spacing:WorkspaceSpacing.controls))
         device.addArrangedSubview(button("Run setup guide…",#selector(quickSetup)));addCard(device,to:stack)
         let routing=section("App switching","Automatically use the active app’s saved controls and dictation shortcut. Other apps use shared controls when configured.")
         followApp.target=self;followApp.action=#selector(changeRouting);routing.addArrangedSubview(followApp)
-        routeLabel.font = .systemFont(ofSize:12);routeLabel.textColor = .rvMuted;routing.addArrangedSubview(routeLabel);addCard(routing,to:stack)
+        routeLabel.font = WorkspaceTypography.body(12);routeLabel.textColor = .rvMuted;routing.addArrangedSubview(routeLabel);addCard(routing,to:stack)
         let universal=section("Dictation in any app","Type with your voice in the focused text field using macOS Dictation.")
-        systemDictationStatus.font = .systemFont(ofSize:12);systemDictationStatus.textColor = .rvMuted
+        systemDictationStatus.font = WorkspaceTypography.body(12);systemDictationStatus.textColor = .rvMuted
         universal.addArrangedSubview(systemDictationStatus)
         universal.addArrangedSubview(button("Configure dictation in any app…",#selector(editSystemDictation)))
         addCard(universal,to:stack)
         let artwork=section("Remote artwork","Use this remote’s design, or choose a front-facing photo. The same artwork identifies it throughout the app.")
         remoteArtworkPreview.widthAnchor.constraint(equalToConstant:100).isActive=true;remoteArtworkPreview.heightAnchor.constraint(equalToConstant:165).isActive=true
-        artworkStatus.font = .systemFont(ofSize:12);artworkStatus.textColor = .rvMuted
-        let artworkControls=vertical(spacing:12);artworkControls.addArrangedSubview(artworkStatus)
+        artworkStatus.font = WorkspaceTypography.body(12);artworkStatus.textColor = .rvMuted
+        let artworkControls=vertical(spacing:WorkspaceSpacing.controls);artworkControls.addArrangedSubview(artworkStatus)
         artworkControls.addArrangedSubview(button("Choose image…",#selector(chooseArtwork)))
         resetArtworkButton=button("Use remote design",#selector(resetArtwork));artworkControls.addArrangedSubview(resetArtworkButton)
-        artwork.addArrangedSubview(horizontal([remoteArtworkPreview,artworkControls,spacer()],spacing:20));addCard(artwork,to:stack)
+        artwork.addArrangedSubview(horizontal([remoteArtworkPreview,artworkControls,spacer()],spacing:WorkspaceSpacing.page));addCard(artwork,to:stack)
         let behavior=section("Button behavior","Mapped buttons automatically replace their original actions. Unmapped buttons keep their normal behavior.")
         addCard(behavior,to:stack)
         return scrollPage(stack)
     }
     private func makePlugins()->NSView {
-        let stack=vertical(spacing:18)
+        let stack=vertical(spacing:WorkspaceSpacing.page)
         pluginSearch.placeholderString="Search plugins";pluginSearch.setAccessibilityLabel("Search installed plugins")
+        pluginSearch.controlSize = .large;pluginSearch.font=WorkspaceTypography.body(13)
         pluginSearch.target=self;pluginSearch.action=#selector(filterPlugins);pluginSearch.sendsSearchStringImmediately=true
         pluginFilter.selectedSegment=0;pluginFilter.target=self;pluginFilter.action=#selector(filterPlugins);pluginFilter.setAccessibilityLabel("Plugin type")
-        let toolbar=horizontal([pluginSearch,pluginFilter],spacing:16)
+        pluginFilter.segmentStyle = .rounded;pluginFilter.controlSize = .large;pluginFilter.font=WorkspaceTypography.body(12,weight:.medium)
+        pluginFilter.selectedSegmentBezelColor = .rvAccent
+        for (index,width) in [50.0,90.0,66.0].enumerated() { pluginFilter.setWidth(width,forSegment:index) }
+        pluginFilter.setContentCompressionResistancePriority(.required,for:.horizontal)
+        pluginFilter.setContentHuggingPriority(.required,for:.horizontal)
+        let toolbar=horizontal([pluginSearch,pluginFilter,spacer()],spacing:WorkspaceSpacing.controls)
         stack.addArrangedSubview(toolbar);toolbar.widthAnchor.constraint(equalTo:stack.widthAnchor).isActive=true
-        pluginSearch.widthAnchor.constraint(greaterThanOrEqualToConstant:180).isActive=true
-        pluginSummary.font = .systemFont(ofSize:12);pluginSummary.textColor = .rvMuted;stack.addArrangedSubview(pluginSummary)
-        pluginList.orientation = .vertical;pluginList.alignment = .leading;pluginList.spacing=14
+        let preferredSearchWidth=pluginSearch.widthAnchor.constraint(equalToConstant:520);preferredSearchWidth.priority = .defaultHigh
+        NSLayoutConstraint.activate([preferredSearchWidth,pluginSearch.widthAnchor.constraint(lessThanOrEqualToConstant:520),pluginSearch.widthAnchor.constraint(greaterThanOrEqualToConstant:220),pluginSearch.heightAnchor.constraint(equalToConstant:32),pluginFilter.heightAnchor.constraint(equalToConstant:32)])
+        pluginSummary.font = WorkspaceTypography.body(12);pluginSummary.textColor = .rvMuted;stack.addArrangedSubview(pluginSummary)
+        pluginList.orientation = .vertical;pluginList.alignment = .leading;pluginList.spacing=WorkspaceSpacing.section
         stack.addArrangedSubview(pluginList);pluginList.widthAnchor.constraint(equalTo:stack.widthAnchor).isActive=true
         rebuildPluginList()
         let install=section("Add more plugins","Put a remote or app plugin in your plugin folder, then reload to see it here.")
-        install.addArrangedSubview(horizontal([button("Open plugin folder…",#selector(openPluginFolder)),button("Reload plugins",#selector(reloadPlugins)),spacer()],spacing:10))
+        install.addArrangedSubview(horizontal([button("Open plugin folder…",#selector(openPluginFolder)),button("Reload plugins",#selector(reloadPlugins)),spacer()],spacing:WorkspaceSpacing.controls))
         install.addArrangedSubview(label("Reloading disconnects all remotes. Reconnect them when you’re ready.",size:11,color:.rvMuted))
         addCard(install,to:stack)
-        return scrollPage(stack)
+        return scrollPage(stack,trailingInset:12)
     }
     @objc private func filterPlugins() { rebuildPluginList() }
     private func rebuildPluginList() {
@@ -642,7 +658,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             let group=section("\(title) · \(plugins.count)",detail)
             pluginList.addArrangedSubview(group);group.widthAnchor.constraint(equalTo:pluginList.widthAnchor).isActive=true
             for plugin in plugins {
-                let info=vertical(spacing:7)
+                let info=vertical(spacing:WorkspaceSpacing.related)
                 info.addArrangedSubview(label(plugin.name,size:17,weight:.semibold))
                 info.addArrangedSubview(label("Version \(plugin.version) · By \(plugin.author)",size:12,color:.rvMuted))
                 let description: String
@@ -651,7 +667,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 } else {
                     description=plugin.device?.layout.map { "\($0.buttons.count) controls · Ready to set up" } ?? "Ready to set up"
                 }
-                let summary=NSTextField(wrappingLabelWithString:description);summary.font = .systemFont(ofSize:12);summary.textColor = .rvMuted
+                let summary=NSTextField(wrappingLabelWithString:description);summary.font = WorkspaceTypography.body(12);summary.textColor = .rvMuted
                 info.addArrangedSubview(summary);summary.widthAnchor.constraint(lessThanOrEqualTo:info.widthAnchor).isActive=true
                 let icon:NSView
                 if kind == "device" {
@@ -677,8 +693,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 } else {
                     action=button("Choose a remote →",#selector(openRemotes));action.setAccessibilityLabel("Choose a remote to configure \(plugin.name)")
                 }
-                let row=horizontal([icon,info,spacer(),action],spacing:18)
-                let panel=card(row,padding:20);panel.toolTip=plugin.id
+                let row=horizontal([icon,info,spacer(),action],spacing:WorkspaceSpacing.section)
+                let panel=card(row,padding:WorkspaceSpacing.card);panel.toolTip=plugin.id
                 pluginList.addArrangedSubview(panel);panel.widthAnchor.constraint(equalTo:pluginList.widthAnchor).isActive=true
                 info.setContentCompressionResistancePriority(.defaultLow,for:.horizontal)
             }
@@ -702,11 +718,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         return NSWorkspace.shared.runningApplications.first(where:{ names.contains($0.localizedName ?? "") })?.bundleURL
     }
     private func makeHelp()->NSView {
-        let stack=vertical(spacing:16)
+        let stack=vertical(spacing:WorkspaceSpacing.page)
         let setup=section("A clear path from setup to your first action","1. Open a remote from Remotes.\n2. Choose an app inside that remote.\n3. Link its buttons and assign actions.\n4. Configure voice and microphone if you need dictation.")
         setup.addArrangedSubview(button("Choose a remote →",#selector(openRemotes),primary:true));addCard(setup,to:stack)
         let fix=section("Something isn’t working?","No button response: check connection and permissions.\nWrong button action: link the physical button again.\nDictation without text: check the target app’s microphone and shortcut.")
-        fix.addArrangedSubview(horizontal([button("Connection & permissions…",#selector(checkConnection)),button("Voice settings →",#selector(openVoice)),spacer()],spacing:10));addCard(fix,to:stack)
+        fix.addArrangedSubview(horizontal([button("Connection & permissions…",#selector(checkConnection)),button("Voice settings →",#selector(openVoice)),spacer()],spacing:WorkspaceSpacing.controls));addCard(fix,to:stack)
         return scrollPage(stack)
     }
     private func showPage(_ page:WorkspacePage) {
@@ -749,13 +765,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         } catch { show(error) }
     }
 
-    private func label(_ text:String,size:CGFloat,weight:NSFont.Weight = .regular,color:NSColor = .rvInk)->NSTextField { let value=NSTextField(labelWithString:text);value.font = .systemFont(ofSize:size,weight:weight);value.textColor=color;return value }
+    private func label(_ text:String,size:CGFloat,weight:NSFont.Weight = .regular,color:NSColor = .rvInk)->NSTextField { let value=NSTextField(labelWithString:text);value.font = size >= 16 ? WorkspaceTypography.heading(size,weight:weight):WorkspaceTypography.body(size,weight:weight);value.textColor=color;return value }
     private func vertical(spacing:CGFloat)->NSStackView { let view=NSStackView();view.orientation = .vertical;view.alignment = .leading;view.spacing=spacing;return view }
     private func horizontal(_ views:[NSView],spacing:CGFloat)->NSStackView { let view=NSStackView(views:views);view.spacing=spacing;view.alignment = .centerY;return view }
     private func spacer()->NSView { let view=NSView();view.setContentHuggingPriority(.init(1),for:.horizontal);return view }
-    private func button(_ text:String,_ selector:Selector,primary:Bool=false)->NSButton { let value:NSButton=primary ? PrimaryButton(title:text,target:self,action:selector) : NSButton(title:text,target:self,action:selector);value.bezelStyle = .rounded;value.controlSize = .large;if primary { value.bezelColor = .rvAccent;value.contentTintColor = .white };return value }
+    private func button(_ text:String,_ selector:Selector,primary:Bool=false)->NSButton { let value:NSButton=primary ? PrimaryButton(title:text,target:self,action:selector) : NSButton(title:text,target:self,action:selector);value.bezelStyle = .rounded;value.controlSize = .large;value.font=WorkspaceTypography.body(13);if primary { value.bezelColor = .rvAccent;value.contentTintColor = .white };return value }
     private func pin(_ child:NSView,to parent:NSView,top:CGFloat,left:CGFloat,right:CGFloat) { parent.addSubview(child);child.translatesAutoresizingMaskIntoConstraints=false;NSLayoutConstraint.activate([child.leadingAnchor.constraint(equalTo:parent.leadingAnchor,constant:left),child.trailingAnchor.constraint(equalTo:parent.trailingAnchor,constant:-right),child.topAnchor.constraint(equalTo:parent.topAnchor,constant:top)]) }
-    private func card(_ content:NSView,padding:CGFloat)->NSView { let view=WorkspaceSurface(.card);pin(content,to:view,top:padding,left:padding,right:padding);content.bottomAnchor.constraint(equalTo:view.bottomAnchor,constant:-padding).isActive=true;return view }
+    private func card(_ content:NSView,padding:CGFloat)->NSView { let view=WorkspaceSurface(.card);WorkspaceTypography.apply(to:content);pin(content,to:view,top:padding,left:padding,right:padding);content.bottomAnchor.constraint(equalTo:view.bottomAnchor,constant:-padding).isActive=true;return view }
     private func loadEditable() { shortcut.setShortcut(controller.config.shortcut);confirmed.state=controller.config.shortcutConfirmed ? .on:.off;toggle.state=controller.config.voiceMode == "toggle" ? .on:.off }
     private func refresh() {
         for session in sessions.controllers.values {
@@ -782,7 +798,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         learningHelp.stringValue=learning ? "Press only \(binding.name) on your physical remote. This link will apply to all apps for this remote." : binding.usage == nil ? "Choose Link physical button, then press this button on your remote. The link is shared across apps; each app keeps its own action." : "Linked for this remote. Relinking updates all its app profiles and keeps their actions separate."
         let dictationShortcut=ShortcutCapture.display(controller.config.shortcut)
         actionPicker.removeAllItems();actionPicker.addItems(withTitles:controller.availableActions.map { $0 == .dictate ? "Dictation · \(dictationShortcut)" : $0.title });actionPicker.selectItem(at:controller.availableActions.firstIndex(of:binding.action) ?? 0)
+        launchAppButton.isHidden=binding.action != .focus
         actionHelp.stringValue=binding.action == .native ? "Outside test mode, keeps the remote’s normal behavior. Choose an action to personalize it." : binding.usage == nil ? "Action selected. Learn this button to activate the mapping." : binding.action == .backspace ? "Press to delete one character. Hold to keep deleting; release to stop. Keep the text box focused." : "Saved for \(controller.appPlugin?.name ?? "the shared profile"). Other app profiles keep their own actions."
+        if binding.action == .focus {
+            let name=controller.catalog.apps.first(where:{$0.id == (binding.launchAppID ?? controller.config.appPluginID)})?.name ?? "an unavailable app"
+            actionHelp.stringValue="Open \(name) when you press \(binding.name). If it is running, bring it to the front." + (binding.usage == nil ? " Link this button first.":"")
+        }
         voiceSection.isHidden=binding.action != .dictate || controller.appPlugin?.app?.supports(.dictate) != true
         let appName=controller.appPlugin?.name ?? "App"
         let toggleShortcut=controller.appPlugin?.app?.actions["dictate"]?.operation == "toggle-shortcut"
@@ -805,7 +826,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         followApp.isEnabled = true
         if noSpecificApp {
             if !controller.config.followActiveApp { routeLabel.stringValue="Shared controls only. Turn on Follow active app to use each app’s saved controls and dictation shortcut." }
-            if binding.controlID == "microphone" {
+            if binding.controlID == "microphone" && binding.action != .focus {
                 actionHelp.stringValue="Shared controls apply to other apps. With Follow active app on, supported apps use their saved dictation shortcut automatically."
             }
         }
@@ -818,7 +839,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         testLearnButton.isEnabled=controller.buttonTestMode && !testLearning
         testCancelButton.isHidden = !testLearning
         let learningID=controller.learningIndex.map { controller.config.bindings[$0].controlID ?? "button-\($0)" }
-        mappingBoard.update(layout:layout,bindings:controller.config.bindings,selection:binding.controlID ?? "button-\(selectedIndex)",actions:controller.availableActions,learningID:learningID,active:controller.displayedUsages,dictationShortcut:dictationShortcut)
+        mappingBoard.update(layout:layout,bindings:controller.config.bindings,selection:binding.controlID ?? "button-\(selectedIndex)",actions:controller.availableActions,learningID:learningID,active:controller.displayedUsages,dictationShortcut:dictationShortcut,launchAppNames:Dictionary(uniqueKeysWithValues:controller.catalog.apps.map{($0.id,$0.name)}),currentAppID:controller.config.appPluginID)
         testConnectButton.title=controller.running ? "Disconnect":"Connect to test"
         buttonTestTitle.textColor=controller.buttonTestFailure == nil ? .rvAccent:.systemOrange
         buttonTestStatus.toolTip=controller.buttonTestFailure
@@ -920,7 +941,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         setup.finished={ [weak self] in self?.systemDictationWindow=nil;self?.refresh() }
         setup.show()
     }
-    @objc private func changeAction() { guard actionPicker.indexOfSelectedItem >= 0 else { return };var config=controller.config;config.bindings[selectedIndex].action=controller.availableActions[actionPicker.indexOfSelectedItem];do { try controller.update(config) } catch { show(error) } }
+    @objc private func changeAction() { guard actionPicker.indexOfSelectedItem >= 0 else { return };assignAction(controller.availableActions[actionPicker.indexOfSelectedItem]) }
+    @objc private func chooseLaunchApp() { assignAction(.focus) }
+    private func assignAction(_ action:RemoteAction) {
+        guard action == .focus else {
+            var config=controller.config;config.bindings[selectedIndex].action=action
+            config.bindings[selectedIndex].launchAppID=nil;config.bindings[selectedIndex].launchAppPath=nil
+            do { try controller.update(config);refresh() } catch { show(error) };return
+        }
+        let session=controller!,index=selectedIndex
+        let apps=session.catalog.apps.sorted{$0.name.localizedStandardCompare($1.name) == .orderedAscending}
+        guard !apps.isEmpty else { refresh();show(JustVibeRemoteError.message("Add an app in Apps before assigning Open app."));return }
+        let picker=NSPopUpButton(frame:NSRect(x:0,y:0,width:360,height:30))
+        picker.font=WorkspaceTypography.body(13)
+        picker.addItems(withTitles:apps.map(\.name));picker.setAccessibilityLabel("App to open")
+        let existing=session.config.bindings[index].launchAppID ?? session.config.appPluginID
+        picker.selectItem(at:apps.firstIndex(where:{$0.id == existing}) ?? 0)
+        let alert=NSAlert();alert.messageText="Open app";alert.informativeText="Choose the app that \(session.config.bindings[index].name) opens. A running app will be brought to the front."
+        alert.accessoryView=picker;alert.addButton(withTitle:"Save Action");alert.addButton(withTitle:"Cancel")
+        alert.beginSheetModal(for:window) { [weak self] response in
+            guard let self else { return };defer { self.refresh() }
+            guard response == .alertFirstButtonReturn else { return }
+            var config=session.config;config.bindings[index].action = .focus;config.bindings[index].launchAppID=apps[picker.indexOfSelectedItem].id;config.bindings[index].launchAppPath=nil
+            do { try session.update(config) } catch { self.show(error) }
+        }
+    }
     @objc private func saveVoice() { _ = saveVoiceSettings() }
     private func saveVoiceSettings() -> Bool { var config=controller.config;config.shortcut=shortcut.shortcutValue ?? "";config.shortcutConfirmed=confirmed.state == .on;config.voiceMode=toggle.state == .on ? "toggle":"hold";do { try controller.update(config); return true } catch { show(error);return false } }
     @objc private func stopVoice() { sessions.stopVoices() }
@@ -986,7 +1031,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             }
             voice.target=keys;voice.action=#selector(ShortcutRecorder.optionChanged(_:))
             let note=NSTextField(wrappingLabelWithString:"Click to record, then press your app’s shortcut. Esc cancels. Use a letter, Space, Return, Backspace, or Escape with any modifiers.")
-            note.frame=NSRect(x:0,y:0,width:420,height:40);note.font = .systemFont(ofSize:11);note.textColor = .rvMuted
+            note.frame=NSRect(x:0,y:0,width:420,height:40);note.font = WorkspaceTypography.body(11);note.textColor = .rvMuted
             [voice,keys,note].forEach { options.addSubview($0) };alert.accessoryView=options
             alert.beginSheetModal(for:window) { [weak self] response in
                 guard let self,response == .alertFirstButtonReturn else { return }

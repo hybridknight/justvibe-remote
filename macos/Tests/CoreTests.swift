@@ -468,7 +468,7 @@ import Foundation
         var sharedEdited=noSpecific;sharedEdited.bindings[0].action = .backspace
         check(AppRouting.resolve(sharedEdited,apps:catalog.apps,foreground:ForegroundApp(bundleID:"unknown",name:"Other"))?.bindings[0].action == .backspace,"shared controls are the fallback for an unrelated foreground app")
         check(AppRouting.resolve(sharedEdited,apps:catalog.apps,foreground:nil) == nil,"shared controls require a foreground app")
-        check(!AppRouting.sharedActions.supports(.dictate) && !AppRouting.sharedActions.supports(.focus),"shared controls never guess dictation or launch a target app")
+        check(!AppRouting.sharedActions.supports(.dictate) && AppRouting.sharedActions.supports(.focus),"shared controls offer explicit app opening without guessing dictation")
         let sharedToApp=try PluginSelection.select(sharedEdited,catalog:catalog,deviceID:sharedEdited.devicePluginID,appID:perApp.appPluginID)
         let sharedRestored=try PluginSelection.select(sharedToApp,catalog:catalog,deviceID:sharedEdited.devicePluginID,appID:Configuration.noSpecificAppID)
         check(sharedRestored.bindings[0].action == .backspace,"shared mappings survive round trips through an app profile")
@@ -611,6 +611,32 @@ import Foundation
         try firstStore.save(firstRemote);try secondStore.save(secondRemote)
         var changedSecond=secondRemote;changedSecond.bindings[0].action = .native;try secondStore.save(changedSecond)
         check(try firstStore.load().bindings == firstButtons,"saving a second active remote never overwrites the first remote's file")
+        let legacyLaunch=try JSONDecoder().decode(Binding.self,from:Data(#"{"name":"Power","action":"focus"}"#.utf8))
+        check(legacyLaunch.launchAppID == nil && legacyLaunch.launchAppPath == nil,"legacy Show app bindings decode without a launch selection")
+        var launcherConfig=manualNative
+        let chosenID=catalog.apps[0].id
+        var chosenConfig=launcherConfig;chosenConfig.targetAppPath="/Applications/Chosen.app"
+        launcherConfig.appMappings[AppRouting.key(launcherConfig.devicePluginID,chosenID)]=AppMapping(chosenConfig)
+        let launchBinding=Binding(name:"Power",usage:Usage(page:12,code:0x30),action:.focus,controlID:"power",launchAppID:chosenID)
+        let launchIndex=launcherConfig.bindings.firstIndex(where:{$0.controlID == "power"}) ?? 0
+        launcherConfig.bindings[launchIndex]=launchBinding
+        let chosenLaunch=try AppRouting.launchTarget(launchBinding,config:launcherConfig,route:launcherConfig,apps:catalog.apps)
+        check(chosenLaunch.appPluginID == chosenID && chosenLaunch.targetAppPath == "/Applications/Chosen.app","Power opens the explicitly chosen app using its saved location")
+        check(launcherConfig.appPluginID == Configuration.noSpecificAppID,"resolving a launch never changes the editor profile")
+        let launchRoute=AppRouting.resolve(launcherConfig,apps:catalog.apps,foreground:unsupportedFront)
+        check(launchRoute?.bindings[launchIndex].action == .focus && launchRoute?.bindings[launchIndex].launchAppID == chosenID,"shared routing preserves the explicit Open app target")
+        var explicitLaunch=launchBinding;explicitLaunch.launchAppPath="/Applications/Explicit.app"
+        check(try AppRouting.launchTarget(explicitLaunch,config:launcherConfig,route:launcherConfig,apps:catalog.apps).targetAppPath == "/Applications/Explicit.app","an explicitly located launch application takes precedence")
+        let launchRoundtrip=try JSONDecoder().decode(Binding.self,from:JSONEncoder().encode(explicitLaunch))
+        check(launchRoundtrip == explicitLaunch,"app identity and location persist with the button action")
+        var staleLaunch=launchBinding;staleLaunch.launchAppID="missing.app"
+        do { _=try AppRouting.launchTarget(staleLaunch,config:launcherConfig,route:launcherConfig,apps:catalog.apps);check(false,"removed launch app must not fall back") } catch { check(true,"removed app target fails closed") }
+        do { _=try AppRouting.launchTarget(legacyLaunch,config:launcherConfig,route:launcherConfig,apps:catalog.apps);check(false,"shared launch must have a selected app") } catch { check(true,"shared launch never guesses an app") }
+        var legacyProfile=launcherConfig;legacyProfile.appPluginID=chosenID;legacyProfile.targetAppPath="/Applications/Legacy.app"
+        check(try AppRouting.launchTarget(legacyLaunch,config:legacyProfile,route:legacyProfile,apps:catalog.apps).targetAppPath == "/Applications/Legacy.app","legacy Show app keeps opening its own profile")
+        let launchSwitched=try PluginSelection.select(launcherConfig,catalog:catalog,deviceID:launcherConfig.devicePluginID,appID:chosenID)
+        let launchRestored=try PluginSelection.select(launchSwitched,catalog:catalog,deviceID:launcherConfig.devicePluginID,appID:Configuration.noSpecificAppID)
+        check(launchRestored.bindings.contains(where:{$0.launchAppID == chosenID && $0.action == .focus}),"Open app choice survives app-profile switching")
         print("JustVibe Remote macOS: \(count) checks passed")
     }
 }

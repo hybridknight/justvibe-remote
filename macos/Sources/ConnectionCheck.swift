@@ -73,23 +73,27 @@ final class ConnectionCheck: NSObject, NSWindowDelegate {
         panel=NSPanel(contentRect:NSRect(x:0,y:0,width:700,height:620),styleMask:[.titled,.closable],backing:.buffered,defer:false)
         super.init();panel.title="Connection check";panel.delegate=self;panel.isReleasedWhenClosed=false;panel.appearance=NSAppearance(named:.aqua)
         let root=NSView();root.wantsLayer=true;root.layer?.backgroundColor=NSColor.white.cgColor;panel.contentView=root
-        let stack=NSStackView();stack.orientation = .vertical;stack.alignment = .leading;stack.spacing=16;stack.translatesAutoresizingMaskIntoConstraints=false;root.addSubview(stack)
-        NSLayoutConstraint.activate([stack.leadingAnchor.constraint(equalTo:root.leadingAnchor,constant:28),stack.trailingAnchor.constraint(equalTo:root.trailingAnchor,constant:-28),stack.topAnchor.constraint(equalTo:root.topAnchor,constant:24)])
-        summary.font = .systemFont(ofSize:21,weight:.bold);stack.addArrangedSubview(summary)
-        details.font = .systemFont(ofSize:12);details.isSelectable=true;stack.addArrangedSubview(details)
-        let help=NSTextField(wrappingLabelWithString:"If a permission switch is already on, quit and reopen JustVibe Remote. Older builds changed signature on every update. After moving to a persistent signer, replace the old approval once. Reset only the affected entry below, then enable this exact app build in Settings and restart.");help.font = .systemFont(ofSize:12);stack.addArrangedSubview(help)
+        let stack=NSStackView();stack.orientation = .vertical;stack.alignment = .leading;stack.spacing=WorkspaceSpacing.section;stack.translatesAutoresizingMaskIntoConstraints=false;root.addSubview(stack)
+        NSLayoutConstraint.activate([stack.leadingAnchor.constraint(equalTo:root.leadingAnchor,constant:WorkspaceSpacing.inset),stack.trailingAnchor.constraint(equalTo:root.trailingAnchor,constant:-WorkspaceSpacing.inset),stack.topAnchor.constraint(equalTo:root.topAnchor,constant:24)])
+        summary.font = WorkspaceTypography.heading(21,weight:.bold);stack.addArrangedSubview(summary)
+        details.font = WorkspaceTypography.body(12);details.isSelectable=true;stack.addArrangedSubview(details)
+        let help=NSTextField(wrappingLabelWithString:"If a permission switch is already on, quit and reopen JustVibe Remote. Older builds changed signature on every update. After moving to a persistent signer, replace the old approval once. Reset only the affected entry below, then enable this exact app build in Settings and restart.");help.font = WorkspaceTypography.body(12);stack.addArrangedSubview(help)
         func button(_ title:String,_ action:Selector)->NSButton { NSButton(title:title,target:self,action:action) }
-        stack.addArrangedSubview(NSStackView(views:[button("Check again",#selector(refresh)),button("Show this app in Finder",#selector(reveal)),button("Restart JustVibe Remote",#selector(restart))]))
-        stack.addArrangedSubview(NSStackView(views:[button("Open Input Monitoring",#selector(openInput)),button("Open Accessibility",#selector(openAccessibility))]))
-        let resetHelp=NSTextField(wrappingLabelWithString:"Reset removes only JustVibe Remote’s permission for the selected category. macOS will require your approval again. Your saved buttons, microphone choice, and plugins are kept.");resetHelp.font = .systemFont(ofSize:11);resetHelp.textColor = .secondaryLabelColor;stack.addArrangedSubview(resetHelp)
-        stack.addArrangedSubview(NSStackView(views:[button("Reset Input Monitoring entry",#selector(resetInput)),button("Reset Accessibility entry",#selector(resetAccessibility))]))
-        message.font = .systemFont(ofSize:12);stack.addArrangedSubview(message);stack.addArrangedSubview(button("Close",#selector(close)))
+        func row(_ views:[NSView])->NSStackView {
+            let row=NSStackView(views:views);row.spacing=WorkspaceSpacing.controls;return row
+        }
+        stack.addArrangedSubview(row([button("Check again",#selector(refresh)),button("Show this app in Finder",#selector(reveal)),button("Restart JustVibe Remote",#selector(restart))]))
+        stack.addArrangedSubview(row([button("Open Input Monitoring",#selector(openInput)),button("Open Accessibility",#selector(openAccessibility))]))
+        let resetHelp=NSTextField(wrappingLabelWithString:"Reset removes only JustVibe Remote’s permission for the selected category. macOS will require your approval again. Your saved buttons, microphone choice, and plugins are kept.");resetHelp.font = WorkspaceTypography.body(11);resetHelp.textColor = .secondaryLabelColor;stack.addArrangedSubview(resetHelp)
+        stack.addArrangedSubview(row([button("Reset Input Monitoring entry",#selector(resetInput)),button("Reset Accessibility entry",#selector(resetAccessibility))]))
+        message.font = WorkspaceTypography.body(12);stack.addArrangedSubview(message);stack.addArrangedSubview(button("Close",#selector(close)))
+        WorkspaceTypography.apply(to:root)
         refresh()
     }
     func show() { parent?.beginSheet(panel) }
-    func render(to url:URL) throws {
-        guard let view=panel.contentView else{return};view.layoutSubtreeIfNeeded()
-        if let bitmap=view.bitmapImageRepForCachingDisplay(in:view.bounds){view.cacheDisplay(in:view.bounds,to:bitmap);if let png=bitmap.representation(using:.png,properties:[:]){try png.write(to:url)}}
+    func render(to url:URL)throws {
+        guard let view=panel.contentView else { return }
+        try WorkspacePreview.write(view,to:url)
     }
     @objc private func refresh() { let report=ConnectionReport.collect(controller.config.profile);summary.stringValue=report.summary;details.stringValue=report.details }
     @objc private func reveal() { NSWorkspace.shared.activateFileViewerSelecting([Bundle.main.bundleURL]) }

@@ -65,7 +65,7 @@ internal sealed class RemoteCanvas : Panel
             var ring=new RectangleF((float)(d.X-d.Radius),(float)(d.Y-d.Radius),(float)d.Radius*2,(float)d.Radius*2);
             using var fill=new LinearGradientBrush(ring,Color.FromArgb(65,67,73),Color.FromArgb(38,40,46),90f);g.FillEllipse(fill,ring);using var pen=new Pen(Color.FromArgb(20,22,26),2);g.DrawEllipse(pen,ring);
         }
-        using(var font=new Font("Segoe UI",9,FontStyle.Bold))using(var ink=new SolidBrush(Color.FromArgb(80,30,35,40)))using(var format=new StringFormat{Alignment=StringAlignment.Center})g.DrawString("R E M O T E V I B E",font,ink,new RectangleF(0,rect.Height-65,rect.Width,30),format);
+        using(var font=new Font(WorkspaceStyle.Text(9,true),FontStyle.Bold))using(var ink=new SolidBrush(Color.FromArgb(80,30,35,40)))using(var format=new StringFormat{Alignment=StringAlignment.Center})g.DrawString("R E M O T E V I B E",font,ink,new RectangleF(0,rect.Height-65,rect.Width,30),format);
         g.Restore(state);
     }
     protected override void Dispose(bool disposing){if(disposing)hints.Dispose();base.Dispose(disposing);}
@@ -110,7 +110,7 @@ internal sealed class RemoteGraphicButton : Button
         else
         {
             string text=Control.Text??Control.Icon switch{"mode"=>"◎","ok"=>"OK","home-back"=>"⌂↶","home"=>"⌂","back"=>"↶","volume-up"=>"V +","volume-down"=>"V −","page-up"=>"PG +","page-down"=>"PG −","apps"=>"Apps",_=>Control.Label};
-            float size=Control.Shape=="pill"?Math.Clamp(r.Width/7,7,11):Math.Clamp(r.Width/4,8,14);using var font=new Font("Segoe UI",size,FontStyle.Bold,GraphicsUnit.Pixel);using var format=new StringFormat{Alignment=StringAlignment.Center,LineAlignment=StringAlignment.Center};g.DrawString(text,font,ink,r,format);
+            float size=Control.Shape=="pill"?Math.Clamp(r.Width/7,7,11):Math.Clamp(r.Width/4,8,14);var font=WorkspaceStyle.Text(size,true,false,GraphicsUnit.Pixel);using var format=new StringFormat{Alignment=StringAlignment.Center,LineAlignment=StringAlignment.Center};g.DrawString(text,font,ink,r,format);
         }
         if(Learned&&!Chosen&&Control.Shape!="segment"){using var dot=new SolidBrush(Palette.Teal);g.FillEllipse(dot,r.Right-6,r.Bottom-6,4,4);}
     }

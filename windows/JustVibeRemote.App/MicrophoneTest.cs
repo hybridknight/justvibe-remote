@@ -18,9 +18,9 @@ internal sealed class MicrophoneTest:Form
     private DateTime started,lastScan;private bool ended,loading;
     public MicrophoneTest(RemoteController controller)
     {
-        this.controller=controller;Text="Microphone test";ClientSize=new Size(650,700);Font=new Font("Segoe UI",10);BackColor=Color.White;StartPosition=FormStartPosition.CenterParent;AutoScaleMode=AutoScaleMode.Dpi;
-        var stack=new FlowLayoutPanel{Dock=DockStyle.Fill,FlowDirection=FlowDirection.TopDown,WrapContents=false,AutoScroll=true,Padding=new Padding(26)};Controls.Add(stack);
-        var heading=Block("Hear your remote’s microphone");heading.Font=new Font("Segoe UI",21,FontStyle.Bold);stack.Controls.Add(heading);
+        this.controller=controller;Text="Microphone test";ClientSize=new Size(650,700);MinimumSize=new Size(650,600);Font=WorkspaceStyle.Text(10);BackColor=Color.White;StartPosition=FormStartPosition.CenterParent;AutoScaleMode=AutoScaleMode.Dpi;
+        var stack=new FlowLayoutPanel{Dock=DockStyle.Fill,FlowDirection=FlowDirection.TopDown,WrapContents=false,AutoScroll=true,Padding=new Padding(WorkspaceStyle.Inset)};Controls.Add(stack);
+        var heading=Block("Hear your remote’s microphone");heading.Font=WorkspaceStyle.Text(21,true,true);stack.Controls.Add(heading);
         stack.Controls.Add(Block("Choose the remote’s USB audio input. Names can be generic; confirm the source by speaking near the remote, away from the computer."));
         stack.Controls.Add(picker);var devicesRow=new FlowLayoutPanel{AutoSize=true};devicesRow.Controls.Add(Button("Refresh",Reload));devicesRow.Controls.Add(Button("Microphone permissions…",()=>Process.Start(new ProcessStartInfo("ms-settings:privacy-microphone"){UseShellExecute=true})));stack.Controls.Add(devicesRow);stack.Controls.Add(source);stack.Controls.Add(meter);stack.Controls.Add(result);
         var actions=new FlowLayoutPanel{AutoSize=true,WrapContents=false};actions.Controls.Add(record);actions.Controls.Add(Button("Stop",Stop));actions.Controls.Add(play);actions.Controls.Add(Button("Delete clip",Clear));stack.Controls.Add(actions);
@@ -32,9 +32,10 @@ internal sealed class MicrophoneTest:Form
         picker.SelectedIndexChanged+=(_,_)=>{if(!loading)Try(()=>{Clear();UpdateLabels();});};record.Click+=(_,_)=>Try(Start);play.Click+=(_,_)=>Try(Play);
         timer.Tick+=(_,_)=>Try(RefreshTest);Shown+=(_,_)=>{controller.BeginMicrophoneTest();timer.Start();};
         FormClosing+=(_,e)=>{if(ended)return;try{Clear();ended=true;timer.Stop();controller.EndMicrophoneTest();}catch(Exception error){e.Cancel=true;MessageBox.Show(this,error.Message,"Microphone test");}};
+        WorkspaceStyle.Apply(this);
         Reload();
     }
-    private static Label Block(string text)=>new(){Text=text,AutoSize=true,MaximumSize=new Size(570,0),Margin=new Padding(3,6,3,10),ForeColor=Palette.Ink};
+    private static Label Block(string text)=>new(){Text=text,AutoSize=true,MaximumSize=new Size(570,0),Margin=new Padding(0,0,0,WorkspaceStyle.Controls),ForeColor=Palette.Ink};
     private static Button Button(string text,Action action){var b=new Button{Text=text,AutoSize=true};b.Click+=(_,_)=>{try{action();}catch(Exception error){MessageBox.Show(error.Message,"Microphone test");}};return b;}
     private AudioInput? Selected=>picker.SelectedIndex>0&&picker.SelectedIndex<=inputs.Count?inputs[picker.SelectedIndex-1]:null;
     private void Reload()

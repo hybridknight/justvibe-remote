@@ -165,7 +165,7 @@ public static class PluginSelection
 {
     public static Configuration Select(Configuration config, PluginCatalog catalog, string deviceID, string appID)
     {
-        var device = catalog.Find(deviceID, "device"); var app = catalog.Find(appID, "app");
+        var device = catalog.Find(deviceID, "device"); var app = appID==Configuration.NoSpecificAppID?null:catalog.Find(appID, "app");
         var sets = new Dictionary<string, List<Binding>>(config.BindingSets) { [config.DevicePluginID + "|" + config.AppPluginID] = config.Bindings.ToList() };
         bool different = deviceID != config.DevicePluginID || appID != config.AppPluginID;
         var bindings = different ? sets.GetValueOrDefault(deviceID + "|" + appID)?.ToList() ?? device.Device!.Layout?.Bindings() ?? new Configuration().Bindings : config.Bindings.ToList();
@@ -177,12 +177,12 @@ public static class PluginSelection
             if(mappings.TryGetValue(AppRouting.Key(deviceID,appID),out var saved))next=saved.Apply(next);
             else
             {
-                next=next with{Shortcut=app.App!.Supports(ActionKind.Dictate)?app.App.Shortcut(ActionKind.Dictate):"",ShortcutConfirmed=false,TargetAppPath="",DictationTested=false,VoiceMode="toggle"};
+                next=next with{Shortcut=app?.App?.Supports(ActionKind.Dictate)==true?app.App.Shortcut(ActionKind.Dictate):"",ShortcutConfirmed=false,TargetAppPath="",DictationTested=false,VoiceMode="toggle"};
                 if(deviceID==config.DevicePluginID&&!config.BindingSets.ContainsKey(AppRouting.Key(deviceID,appID)))next=next with{Bindings=next.Bindings.Select(b=>b with{Usage=config.Bindings.FirstOrDefault(old=>b.ControlID!=null?(old.ControlID==b.ControlID||(old.ControlID==null&&old.Name==b.Name)):old.Name==b.Name)?.Usage}).ToList()};
             }
         }
         if(device.Device!.Layout!=null)next=next with{Bindings=device.Device.Layout.Bindings(next.Bindings)};
-        next=next with{Bindings=next.Bindings.Select(b=>app.App!.Supports(b.Action)?b:b with{Action=ActionKind.Native}).ToList()};
+        next=next with{Bindings=next.Bindings.Select(b=>b.Action==ActionKind.Focus||(app?.App?.Supports(b.Action)??SharedActions.Supports(b.Action))?b:b with{Action=ActionKind.Native}).ToList()};
         return next;
     }
 }

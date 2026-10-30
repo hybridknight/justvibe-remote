@@ -22,25 +22,29 @@ final class MicrophoneTest: NSObject, NSWindowDelegate {
         panel = NSPanel(contentRect: NSRect(x:0,y:0,width:650,height:780),styleMask:[.titled,.closable],backing:.buffered,defer:false)
         super.init(); panel.title = "Microphone test"; panel.delegate = self; panel.isReleasedWhenClosed = false; panel.appearance = NSAppearance(named:.aqua)
         let root = NSView(); root.wantsLayer = true; root.layer?.backgroundColor = NSColor.white.cgColor; panel.contentView = root
-        let stack = NSStackView(); stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = 16; stack.translatesAutoresizingMaskIntoConstraints = false
-        root.addSubview(stack); NSLayoutConstraint.activate([stack.leadingAnchor.constraint(equalTo:root.leadingAnchor,constant:28),stack.trailingAnchor.constraint(equalTo:root.trailingAnchor,constant:-28),stack.topAnchor.constraint(equalTo:root.topAnchor,constant:26)])
-        func label(_ text: String, _ size: CGFloat = 12) -> NSTextField { let label = NSTextField(wrappingLabelWithString:text); label.font = .systemFont(ofSize:size); label.textColor = .rvInk; return label }
-        let heading = label("Hear your remote’s microphone",24); heading.font = .systemFont(ofSize:24,weight:.bold); stack.addArrangedSubview(heading)
+        let stack = NSStackView(); stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = WorkspaceSpacing.section; stack.translatesAutoresizingMaskIntoConstraints = false
+        root.addSubview(stack); NSLayoutConstraint.activate([stack.leadingAnchor.constraint(equalTo:root.leadingAnchor,constant:WorkspaceSpacing.inset),stack.trailingAnchor.constraint(equalTo:root.trailingAnchor,constant:-WorkspaceSpacing.inset),stack.topAnchor.constraint(equalTo:root.topAnchor,constant:WorkspaceSpacing.inset)])
+        func label(_ text: String, _ size: CGFloat = 12) -> NSTextField { let label = NSTextField(wrappingLabelWithString:text); label.font = WorkspaceTypography.text(size); label.textColor = .rvInk; return label }
+        let heading = label("Hear your remote’s microphone",24); heading.font = WorkspaceTypography.heading(24,weight:.bold); stack.addArrangedSubview(heading)
+        func row(_ views:[NSView])->NSStackView {
+            let row=NSStackView(views:views);row.spacing=WorkspaceSpacing.controls;return row
+        }
         stack.addArrangedSubview(label("Choose the remote’s USB audio input. A USB label identifies its connection type; it does not prove which remote it belongs to."))
         picker.target = self; picker.action = #selector(selectInput); picker.widthAnchor.constraint(equalToConstant:580).isActive = true
         let refresh = NSButton(title:"Refresh",target:self,action:#selector(reload))
-        stack.addArrangedSubview(picker); stack.addArrangedSubview(NSStackView(views:[refresh,NSButton(title:"Microphone permissions…",target:self,action:#selector(permissions))]))
-        source.font = .systemFont(ofSize:12,weight:.semibold); stack.addArrangedSubview(source)
+        stack.addArrangedSubview(picker); stack.addArrangedSubview(row([refresh,NSButton(title:"Microphone permissions…",target:self,action:#selector(permissions))]))
+        source.font = WorkspaceTypography.body(12,weight:.semibold); stack.addArrangedSubview(source)
         meter.minValue = 0; meter.maxValue = 100; meter.levelIndicatorStyle = .continuousCapacity; meter.widthAnchor.constraint(equalToConstant:580).isActive = true; stack.addArrangedSubview(meter)
-        result.font = .systemFont(ofSize:12); result.textColor = .rvMuted; stack.addArrangedSubview(result)
+        result.font = WorkspaceTypography.body(12); result.textColor = .rvMuted; stack.addArrangedSubview(result)
         record = NSButton(title:"Start 5-second test",target:self,action:#selector(startTest)); play = NSButton(title:"Play back",target:self,action:#selector(playClip))
-        stack.addArrangedSubview(NSStackView(views:[record,NSButton(title:"Stop",target:self,action:#selector(stopTest)),play,NSButton(title:"Delete clip",target:self,action:#selector(deleteClip))]))
+        stack.addArrangedSubview(row([record,NSButton(title:"Stop",target:self,action:#selector(stopTest)),play,NSButton(title:"Delete clip",target:self,action:#selector(deleteClip))]))
         stack.addArrangedSubview(label("Hold the remote’s mic button while speaking if needed. Try speaking close to the remote, away from the computer. Preview uses channel 1 and stays in memory; it is deleted on close."))
-        system.font = .systemFont(ofSize:12); stack.addArrangedSubview(system)
+        system.font = WorkspaceTypography.body(12); stack.addArrangedSubview(system)
         stack.addArrangedSubview(NSButton(title:"Use selected mic as system input",target:self,action:#selector(makeDefault)))
         protect.state = controller.config.microphones[controller.config.devicePluginID]?.guardDictation == false ? .off : .on; stack.addArrangedSubview(protect)
         stack.addArrangedSubview(label("ChatGPT input is not verified here. In your app, choose this same microphone or System Default. Close this test, then dictate a phrase in the app. The meter alone does not verify ChatGPT’s audio source."))
-        stack.addArrangedSubview(NSStackView(views:[NSButton(title:"Save microphone choice",target:self,action:#selector(save)),NSButton(title:"Close",target:self,action:#selector(close))]))
+        stack.addArrangedSubview(row([NSButton(title:"Save microphone choice",target:self,action:#selector(save)),NSButton(title:"Close",target:self,action:#selector(close))]))
+        WorkspaceTypography.apply(to:root)
         reload()
     }
     private var selected: AudioInput? { let i = picker.indexOfSelectedItem - 1; return inputs.indices.contains(i) ? inputs[i] : nil }
@@ -113,5 +117,8 @@ final class MicrophoneTest: NSObject, NSWindowDelegate {
     }
     @objc private func close() { guard !ended else { return }; ended = true; requestToken = UUID(); timer?.invalidate(); timer = nil; audio.clear(); controller.endMicrophoneTest(); parent?.endSheet(panel); panel.orderOut(nil); finished?() }
     func windowShouldClose(_ sender: NSWindow) -> Bool { close(); return false }
-    func render(to url: URL) throws { guard let view = panel.contentView else { return }; view.layoutSubtreeIfNeeded(); if let bitmap = view.bitmapImageRepForCachingDisplay(in:view.bounds) { view.cacheDisplay(in:view.bounds,to:bitmap); if let png = bitmap.representation(using:.png,properties:[:]) { try png.write(to:url) } } }
+    func render(to url:URL)throws {
+        guard let view=panel.contentView else { return }
+        try WorkspacePreview.write(view,to:url)
+    }
 }

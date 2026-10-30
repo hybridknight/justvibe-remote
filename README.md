@@ -6,7 +6,7 @@
 
 Use a handheld remote to dictate, send prompts, navigate, and trigger shortcuts in your AI apps. Customize buttons for each app and add remote or app support through plugins.
 
-Built for **macOS 13+ on Apple Silicon** and **Windows x64**. Voice input uses the target app’s dictation feature, or optional macOS Dictation across apps; compatibility depends on your hardware and plugins.
+Built for **macOS 13+ on Apple Silicon** and **Windows x64 / ARM64**. Voice input uses the target app’s dictation feature, or optional macOS Dictation across apps; compatibility depends on your hardware and plugins.
 
 ## Build and test
 
@@ -25,6 +25,10 @@ Signing setup creates a local code-signing identity and may request authorizatio
 ```powershell
 ./scripts/build-windows.ps1
 ```
+
+For native Windows page/layout verification without starting receivers or recording,
+run `./scripts/test-windows-ui.ps1` on Windows. See [the platform support review](docs/PLATFORM-PARITY.md)
+for the feature matrix, platform boundaries, and live acceptance checks.
 
 Run the portable Windows core tests on macOS, Windows, or Linux:
 
@@ -91,6 +95,14 @@ Platforms reflect the manifests. Confirm shortcuts in your app; see each plugin�
 On macOS, use **Add a new remote…** to identify a receiver. If no plugin matches, copy the generated agent prompt and supply a front-facing photo. In a remote’s **Apps** page, use **Add app…** or drop an application from Finder to create a local app profile.
 
 To install a plugin, open **Plugins → Open plugin folder…**, copy its folder there, then click **Reload plugins**. Reload disconnects active sessions. Button mappings are saved per remote and app.
+
+To launch an app from a remote button, open **Buttons**, select a button such as
+**Power**, and choose **Action → Open app**. Pick an app from the existing app list
+and save the Action. For example, Power can open ChatGPT or bring it to the front
+if it is already running. Use **Choose app…** to change the target. Windows asks
+you to locate the app's `.exe` when its location is unknown. Link the physical
+button if needed. The Action belongs to that remote's selected app profile;
+**No specific app** provides shared controls under the existing routing rules.
 
 Create plugins with the [agent authoring guide](docs/PLUGIN-AUTHORING.md), [API reference](docs/PLUGINS.md), and [device or app starters](plugins/examples/README.md). For photo-based layouts, see [image-to-plugin](docs/IMAGE-TO-PLUGIN.md). Plugins contain declarative JSON and documentation; the host does not execute plugin scripts or native libraries.
 

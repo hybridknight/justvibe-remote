@@ -26,14 +26,25 @@ struct ForegroundApp {
     var instance: String = ""
 }
 enum AppRouting {
-    /// Shared controls operate on the current foreground app; they never launch
-    /// an app or guess an app-specific dictation shortcut.
+    /// Typing controls operate on the foreground app. Opening an app uses a
+    /// separately selected app identity; it never guesses a dictation shortcut.
     static let sharedActions=AppPlugin(adapter:"shortcuts",targets:[:],actions:[
+        "focus":PluginAction(operation:"focus",shortcuts:nil),
         "send":PluginAction(operation:"tap-shortcut",shortcuts:["macos":"RETURN"]),
         "backspace":PluginAction(operation:"tap-shortcut",shortcuts:["macos":"BACKSPACE"]),
         "escape":PluginAction(operation:"tap-shortcut",shortcuts:["macos":"ESC"]),
     ])
     static func key(_ deviceID: String, _ appID: String) -> String { deviceID + "|" + appID }
+    static func launchTarget(_ binding:Binding,config:Configuration,route:Configuration,apps:[PluginManifest]) throws -> Configuration {
+        let id=binding.launchAppID ?? route.appPluginID
+        guard binding.action == .focus,id != Configuration.noSpecificAppID,apps.contains(where:{$0.id == id && $0.kind == "app"}) else {
+            throw JustVibeRemoteError.message("Choose an app for this button’s Open app action. Its app profile may have been removed.")
+        }
+        var target=route;target.appPluginID=id
+        target.targetAppPath=binding.launchAppPath ?? (id == config.appPluginID ? config.targetAppPath:id == route.appPluginID ? route.targetAppPath:config.appMappings[key(config.devicePluginID,id)]?.targetAppPath ?? "")
+        target.usesSystemDictation=false;target.systemDictationTargetPID=nil
+        return target
+    }
     static func outputPlugin(_ route:Configuration,apps:[PluginManifest])->AppPlugin? {
         guard let plugin=route.appPluginID == Configuration.noSpecificAppID ? sharedActions:apps.first(where:{$0.id == route.appPluginID})?.app else { return nil }
         guard route.usesSystemDictation else { return plugin }
@@ -64,7 +75,7 @@ enum AppRouting {
             }
             candidate.bindings = candidate.bindings.map { binding in
                 var result = binding
-                if plugin.app?.supports(result.action) != true { result.action = .native }
+                if result.action != .focus && plugin.app?.supports(result.action) != true { result.action = .native }
                 return result
             }
             guard let target = plugin.app?.targets[platform] else { continue }

@@ -76,7 +76,7 @@ final class RemoteCanvas: NSView {
             NSColor.black.withAlphaComponent(0.45).setStroke();ring.lineWidth=2;ring.stroke()
         }
         let logo = "JUSTVIBEREMOTE" as NSString
-        let attrs: [NSAttributedString.Key:Any] = [.font:NSFont.systemFont(ofSize:11,weight:.semibold),.foregroundColor:NSColor.black.withAlphaComponent(0.3),.kern:3]
+        let attrs: [NSAttributedString.Key:Any] = [.font:WorkspaceTypography.body(11,weight:.semibold),.foregroundColor:NSColor.black.withAlphaComponent(0.3),.kern:3]
         let size=logo.size(withAttributes:attrs)
         logo.draw(at:NSPoint(x:(model.width-size.width)/2,y:model.height-65),withAttributes:attrs)
         NSGraphicsContext.restoreGraphicsState()
@@ -124,7 +124,7 @@ private final class RemoteGraphicButton: NSButton {
             let glyphs=["power":"⏻","mode":"◎","up":"▴","down":"▾","left":"◂","right":"▸","ok":"OK","home-back":"⌂↶","home":"⌂","back":"↶","menu":"≡","volume-up":"V +","volume-down":"V −","page-up":"PG +","page-down":"PG −","apps":"▦ Apps"]
             let text=(control.text ?? glyphs[control.icon] ?? control.label) as NSString
             let size:CGFloat=control.shape == "pill" ? max(7,min(11,rect.width/7)) : ["ok","home-back","volume-up","volume-down","page-up","page-down"].contains(control.icon) ? max(8,min(12,rect.width/4)) : max(12,min(24,rect.height*0.65))
-            let attrs:[NSAttributedString.Key:Any]=[.font:NSFont.systemFont(ofSize:size,weight:.semibold),.foregroundColor:color]
+            let attrs:[NSAttributedString.Key:Any]=[.font:WorkspaceTypography.body(size,weight:.semibold),.foregroundColor:color]
             let measure=text.size(withAttributes:attrs)
             text.draw(at:NSPoint(x:rect.midX-measure.width/2,y:rect.midY-measure.height/2),withAttributes:attrs)
         }
@@ -134,7 +134,7 @@ private final class RemoteGraphicButton: NSButton {
 
 final class PrimaryButton: NSButton {
     override var intrinsicContentSize: NSSize {
-        let size=(title as NSString).size(withAttributes:[.font:NSFont.systemFont(ofSize:13,weight:.semibold)])
+        let size=(title as NSString).size(withAttributes:[.font:WorkspaceTypography.body(13,weight:.semibold)])
         return NSSize(width:max(120,size.width+28),height:38)
     }
     override func draw(_ dirtyRect: NSRect) {
@@ -143,7 +143,7 @@ final class PrimaryButton: NSButton {
         let base=NSColor.rvAccent.withAlphaComponent(isEnabled ? isHighlighted ? 0.82:1:0.45)
         NSGradient(starting:base.blended(withFraction:0.12,of:.white) ?? base,ending:base)?.draw(in:shape,angle:90)
         NSColor.white.withAlphaComponent(0.15).setStroke();shape.lineWidth=1;shape.stroke()
-        let attributes:[NSAttributedString.Key:Any]=[.font:NSFont.systemFont(ofSize:13,weight:.semibold),.foregroundColor:NSColor.white]
+        let attributes:[NSAttributedString.Key:Any]=[.font:WorkspaceTypography.body(13,weight:.semibold),.foregroundColor:NSColor.white]
         let text=title as NSString,size=text.size(withAttributes:attributes)
         text.draw(at:NSPoint(x:rect.midX-size.width/2,y:rect.midY-size.height/2),withAttributes:attributes)
     }

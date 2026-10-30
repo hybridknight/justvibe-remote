@@ -53,7 +53,7 @@ private final class AppIconButton:NSButton {
         if chosen { NSColor.rvAccent.withAlphaComponent(0.4).setStroke();shape.lineWidth=1;shape.stroke() }
         choice.image?.draw(in:NSRect(x:32,y:10,width:36,height:36),from:.zero,operation:.sourceOver,fraction:1,respectFlipped:true,hints:nil)
         let paragraph=NSMutableParagraphStyle();paragraph.alignment = .center;paragraph.lineBreakMode = .byTruncatingTail
-        (choice.name as NSString).draw(in:NSRect(x:4,y:55,width:92,height:18),withAttributes:[.font:NSFont.systemFont(ofSize:11,weight:chosen ? .semibold:.medium),.foregroundColor:chosen ? NSColor.rvAccent:NSColor.rvInk,.paragraphStyle:paragraph])
+        (choice.name as NSString).draw(in:NSRect(x:4,y:55,width:92,height:18),withAttributes:[.font:WorkspaceTypography.body(11,weight:chosen ? .semibold:.medium),.foregroundColor:chosen ? NSColor.rvAccent:NSColor.rvInk,.paragraphStyle:paragraph])
     }
     override func drawFocusRingMask() { NSBezierPath(roundedRect:bounds,xRadius:12,yRadius:12).fill() }
     override var focusRingMaskBounds:NSRect { bounds }

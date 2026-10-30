@@ -5,17 +5,22 @@ namespace JustVibeRemote;
 
 internal sealed class RemoteController
 {
-    public ConfigurationStore Store { get; } = new(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JustVibeRemote", "settings.json"));
+    public ConfigurationStore Store { get; }
+    private readonly string pluginDirectory;
+    public Action? ValidateStart, Stopped, ReleaseVoice;
+    public Func<bool>? ClaimVoice, MaySendOutput;
+    public bool ButtonTesting { get; private set; }
+    public void SetButtonTest(bool enabled){if(ButtonTesting==enabled)return;CancelLearning();StopVoice();ButtonTesting=enabled;Changed?.Invoke();}
     public Configuration Config { get; private set; }
     public PluginCatalog Catalog { get; private set; }
-    public string PluginDirectory => Path.Combine(Path.GetDirectoryName(Store.Path)!, "plugins");
+    public string PluginDirectory => pluginDirectory;
     public PluginManifest? AppPlugin => Catalog.Apps.FirstOrDefault(p => p.Id == Config.AppPluginID);
     public PluginManifest? DevicePlugin => Catalog.Devices.FirstOrDefault(p => p.Id == Config.DevicePluginID);
     public RemoteLayout Layout => DevicePlugin?.Device?.Layout ?? RemoteLayout.Generic(Config.Bindings);
     public HashSet<Usage> ActiveUsages { get; } = [];
     public int? LearningIndex => learning;
-    public bool VoiceActive => voice.Held || pending;
-    public ActionKind[] AvailableActions => Enum.GetValues<ActionKind>().Where(action => action == ActionKind.Native || AppPlugin?.App?.Supports(action) == true).ToArray();
+    public bool VoiceActive => voice.Held || pending || output.HasHeldKeys;
+    public ActionKind[] AvailableActions => Enum.GetValues<ActionKind>().Where(action => action is ActionKind.Native or ActionKind.Focus || (AppPlugin?.App??(Config.AppPluginID==Configuration.NoSpecificAppID?SharedActions.Plugin:null))?.Supports(action) == true).ToArray();
     public string Status { get; private set; } = "Ready to set up your remote";
     public bool Running { get; private set; }
     public int Connected { get; private set; }
@@ -28,12 +33,16 @@ internal sealed class RemoteController
     public SetupProgress SetupProgress => new(true,true,Running&&Connected>0,AppPlugin?.App?.Supports(ActionKind.Dictate)==true,MicrophoneIndex is int index&&Config.Bindings[index].Usage!=null&&Config.Bindings[index].Action==ActionKind.Dictate,Config.ShortcutConfirmed,Config.DictationTested);
     public void ResumeIfConfigured(){if(Config.AutoConnect)Start();}
     public void ShowTargetApp(){try{var display=new TargetOutput{Plugin=Catalog.Find(Config.AppPluginID,"app").App};display.Show(Config);}catch(Exception error){Status=error.Message;Changed?.Invoke();}}
+    private Usage? repeatUsage;
+    private Configuration? repeatRoute;
+    private DateTime repeatAfter;
+    private readonly System.Windows.Forms.Timer repeatTimer=new(){Interval=80};
     private NativeInput? input;
     private readonly TargetOutput output = new();
     private readonly VoiceSession voice = new();
     private readonly System.Windows.Forms.Timer timer = new() { Interval = 250 };
-    private bool pending;
-    private int generation;
+    private readonly PendingVoiceStart voiceStart=new();
+    private bool pending=>voiceStart.Pending;
     private int? learning;
     private Configuration? routedConfig;
     private string routeKey="";
@@ -43,22 +52,24 @@ internal sealed class RemoteController
         if(!Running)return;
         var front=TargetOutput.Foreground();
         var next=AppRouting.Resolve(Config,Catalog.Apps,front);
-        string key=Config.FollowActiveApp?(front?.Instance??"none")+"|"+(next?.AppPluginID??"native"):Config.AppPluginID;
+        string key=Config.FollowActiveApp||Config.AppPluginID==Configuration.NoSpecificAppID?(front?.Instance??"none")+"|"+(next?.AppPluginID??"native"):Config.AppPluginID;
         if(!force&&key==routeKey)return;
         FinishVoice();
         if(output.HasHeldKeys){routedConfig=null;return;}
-        routeKey=key;routedConfig=next;output.Plugin=next==null?null:Catalog.Find(next.AppPluginID,"app").App;
+        routeKey=key;routedConfig=next;output.Plugin=next==null?null:next.AppPluginID==Configuration.NoSpecificAppID?SharedActions.Plugin:Catalog.Find(next.AppPluginID,"app").App;
         RoutingLabel=Config.FollowActiveApp?next==null?"Active app: original remote actions":"Active mapping: "+Catalog.Find(next.AppPluginID,"app").Name:"Using selected app";
         Changed?.Invoke();
     }
-    public RemoteController()
+    public RemoteController(ConfigurationStore? store=null,Configuration? initial=null,string? pluginDirectory=null)
     {
+        Store=store??new(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),"JustVibeRemote","settings.json"));
+        this.pluginDirectory=pluginDirectory??Path.Combine(Path.GetDirectoryName(Store.Path)!,"plugins");
         Catalog = new PluginCatalog(Path.Combine(AppContext.BaseDirectory, "plugins"), PluginDirectory);
         var device = Catalog.Devices.FirstOrDefault(p => p.Id == new Configuration().DevicePluginID); var app = Catalog.Apps.FirstOrDefault(p => p.Id == new Configuration().AppPluginID);
         var defaults = new Configuration();
         if (device != null) defaults = defaults with { DevicePluginID = device.Id, Profile = device.Device!.Profile };
         if (app != null) defaults = defaults with { AppPluginID = app.Id, Shortcut = app.App!.Supports(ActionKind.Dictate) ? app.App.Shortcut(ActionKind.Dictate) : "" };
-        Config = Store.Load(defaults);
+        Config = Store.Load(initial??defaults);
         if (File.Exists(Store.Path))
         {
             using var document = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Store.Path));
@@ -72,6 +83,11 @@ internal sealed class RemoteController
             if(voice.Held){try{AudioInputs.Check(Config.Microphones.GetValueOrDefault(Config.DevicePluginID));}catch(Exception error){FinishVoice();Status=error.Message;Changed?.Invoke();}}
             if (voice.Held && (voice.Expired(DateTimeOffset.UtcNow) || !(routedConfig!=null&&output.IsTargetFrontmost(routedConfig)))) FinishVoice();
         };
+        repeatTimer.Tick+=(_,_)=>{
+            if(repeatUsage is not Usage usage||repeatRoute is not {} route||!ActiveUsages.Contains(usage)||!Running||MicrophoneTesting||ButtonTesting||learning!=null||MaySendOutput?.Invoke()==false||!output.IsTargetFrontmost(route)){repeatTimer.Stop();repeatUsage=null;return;}
+            if(DateTime.UtcNow<repeatAfter)return;
+            try{output.Tap(ActionKind.Backspace);}catch(Exception error){repeatTimer.Stop();repeatUsage=null;Status=error.Message;Changed?.Invoke();}
+        };
         timer.Start();
     }
     public void Start()
@@ -79,8 +95,9 @@ internal sealed class RemoteController
         if (Running) return;
         try
         {
+            ValidateStart?.Invoke();
             var device = Catalog.Find(Config.DevicePluginID, "device");
-            output.Plugin = Catalog.Find(Config.AppPluginID, "app").App!;
+            output.Plugin = AppPlugin?.App;
             Config = Config with { Profile = device.Device!.Profile };
             input = new NativeInput(Config.Profile);
             input.Edge += Handle;
@@ -89,14 +106,15 @@ internal sealed class RemoteController
             input.Error += message => { Status = message; FinishVoice(); Changed?.Invoke(); };
             Running = true; SynchronizeRoute(true); input.RefreshDevices();
         }
-        catch (Exception error) { input?.Dispose(); input = null; Status = error.Message; }
+        catch (Exception error) { input?.Dispose(); input = null; Running=false;Stopped?.Invoke();Status = error.Message; }
         Changed?.Invoke();
     }
     public void Stop()
     {
-        Running = false; routedConfig=null; routeKey=""; ActiveUsages.Clear(); pending = false; generation++; learning = null;
+        repeatTimer.Stop();repeatUsage=null;
+        Running = false; routedConfig=null; routeKey=""; ActiveUsages.Clear(); voiceStart.Cancel(); learning = null;
         input?.Dispose(); input = null; Connected = 0;
-        output.Release(); voice.Commit(false, DateTimeOffset.UtcNow);
+        output.Release(); voice.Commit(false, DateTimeOffset.UtcNow);ReleaseVoice?.Invoke();Stopped?.Invoke();
         Status = "Stopped; voice shortcut released"; Changed?.Invoke();
     }
     public void Update(Configuration configuration)
@@ -107,17 +125,19 @@ internal sealed class RemoteController
             configuration=configuration with{DictationTested=false,AppMappings=configuration.AppMappings.ToDictionary(p=>p.Key,p=>p.Key.StartsWith(configuration.DevicePluginID+"|",StringComparison.Ordinal)?p.Value with{DictationTested=false}:p.Value)};
         configuration.Validate();
         Catalog.Find(configuration.DevicePluginID, "device");
-        var app = Catalog.Find(configuration.AppPluginID, "app").App!;
-        if (app.Supports(ActionKind.Dictate)) TargetOutput.ParseShortcut(configuration.Shortcut);
+        var app = configuration.AppPluginID==Configuration.NoSpecificAppID?null:Catalog.Find(configuration.AppPluginID, "app").App;
+        if (app?.Supports(ActionKind.Dictate)==true) TargetOutput.ParseShortcut(configuration.Shortcut);
         bool restart = Running;
         Stop(); Store.Save(configuration); Config = configuration;
         if (restart) Start();
         Changed?.Invoke();
     }
+    public void SaveSetup(RemoteSetupCheckpoint checkpoint,bool? completed=null){var next=Config with{RemoteSetupCheckpoint=checkpoint,RemoteSetupCompleted=completed??Config.RemoteSetupCompleted};Store.Save(next);Config=next;Changed?.Invoke();}
     public void SelectPlugins(string deviceID, string appID)
     {
         Update(PluginSelection.Select(Config, Catalog, deviceID, appID));
     }
+    public void RefreshCatalog(){Catalog=new PluginCatalog(Path.Combine(AppContext.BaseDirectory,"plugins"),PluginDirectory);}
     public void ReloadPlugins()
     {
         Stop(); Catalog = new PluginCatalog(Path.Combine(AppContext.BaseDirectory, "plugins"), PluginDirectory);
@@ -135,13 +155,15 @@ internal sealed class RemoteController
     public void TestVoice()
     {
         if (!Running) { Status = "Connect your remote first"; Changed?.Invoke(); return; }
-        if (voice.Held || pending) FinishVoice();
+        if (VoiceActive) FinishVoice();
         else if(Config.FollowActiveApp){ShowTargetApp();Status="Use the remote’s microphone button in the app to test its active mapping";Changed?.Invoke();}
         else if(routedConfig!=null)BeginVoice(routedConfig);
     }
     private void Handle(Usage usage, bool down)
     {
         if (!Running) return;
+        bool repeatedDown=down&&ActiveUsages.Contains(usage);
+        if(!down&&repeatUsage==usage){repeatTimer.Stop();repeatUsage=null;}
         if (down) ActiveUsages.Add(usage); else ActiveUsages.Remove(usage);
         Changed?.Invoke();
         try
@@ -154,22 +176,38 @@ internal sealed class RemoteController
                 Store.Save(next); Config = next; learning = null; SynchronizeRoute(true);
                 Status = $"Learned {Config.Bindings[index].Name}: {usage}"; Changed?.Invoke(); return;
             }
-            if(MicrophoneTesting)return;
+            if(MicrophoneTesting||ButtonTesting||MaySendOutput?.Invoke()==false)return;
             SynchronizeRoute();
             var route=routedConfig;
+            var source=Config.Bindings.FirstOrDefault(binding=>binding.Usage==usage);
+            if(source?.ControlID is string controlID&&VoiceTypingRouting.ShouldTrigger(Config,route!=null&&output.IsTargetFrontmost(route)?route:null,controlID,down,false,false))
+            {
+                if(ClaimVoice?.Invoke()==false)throw new InvalidOperationException("Another remote is dictating. Stop it first.");
+                try{if(TargetOutput.Foreground()==null)throw new InvalidOperationException("Focus a text field before starting Windows voice typing.");AudioInputs.Check(Config.Microphones.GetValueOrDefault(Config.DevicePluginID));output.TapShortcut("WIN+H");Status="Windows voice typing shortcut sent. Use the Windows voice typing panel to stop listening.";}
+                finally{if(!output.HasHeldKeys)ReleaseVoice?.Invoke();}
+                Changed?.Invoke();return;
+            }
             var match=route?.Bindings.FirstOrDefault(binding=>binding.Usage==usage);
-            if(match==null||route==null||output.Plugin?.Supports(match.Action)!=true)return;
+            if(match==null||route==null||(match.Action!=ActionKind.Focus&&output.Plugin?.Supports(match.Action)!=true))return;
+            if(match.Action==ActionKind.Focus&&repeatedDown)return;
             if (match.Action == ActionKind.Dictate)
             {
                 if (route.VoiceMode == "hold" && !down) { FinishVoice(); return; }
-                if (down && route.VoiceMode == "toggle" && (voice.Held || pending)) FinishVoice();
+                if (down && route.VoiceMode == "toggle" && VoiceActive) FinishVoice();
                 else if (down && !voice.Held && !pending) BeginVoice(route);
             }
-            else if (down && match.Action == ActionKind.Focus) output.Show(route);
+            else if (down && match.Action == ActionKind.Focus)
+            {
+                FinishVoice();if(VoiceActive)throw new InvalidOperationException("Stop voice input before opening another app.");
+                var target=AppRouting.LaunchTarget(match,Config,route,Catalog.Apps);
+                new TargetOutput{Plugin=Catalog.Find(target.AppPluginID,"app").App}.Show(target);
+                Status="Opening "+Catalog.Find(target.AppPluginID,"app").Name;Changed?.Invoke();
+            }
             else if (down && match.Action != ActionKind.Native)
             {
                 if (!output.IsTargetFrontmost(route)) throw new InvalidOperationException("Switch to the selected app before using mapped typing buttons.");
                 output.Tap(match.Action);
+                if(match.Action==ActionKind.Backspace){repeatUsage=usage;repeatRoute=route;repeatAfter=DateTime.UtcNow.AddMilliseconds(350);repeatTimer.Start();}
             }
         }
         catch (Exception error) { Status = error.Message; Changed?.Invoke(); }
@@ -185,24 +223,26 @@ internal sealed class RemoteController
             TargetOutput.ParseShortcut(route.Shortcut);
             if(route.FollowActiveApp){if(!output.IsTargetFrontmost(route))throw new InvalidOperationException("The active app changed. Press the remote button again in your app.");}
             else output.Show(route);
-            int ticket = ++generation; pending = true;
+            if(ClaimVoice?.Invoke()==false)throw new InvalidOperationException("Another remote is dictating. Stop it first.");
+            int ticket = voiceStart.Begin();
             await Task.Delay(250);
             SynchronizeRoute();
-            if (!Running || !pending || ticket != generation) return;
-            pending = false;
+            if (!voiceStart.TryComplete(ticket,Running)) return;
             if (!output.IsTargetFrontmost(route)) throw new InvalidOperationException("The selected app is not in front. Open it and try again.");
             if(MicrophoneTesting)return;
             AudioInputs.Check(Config.Microphones.GetValueOrDefault(Config.DevicePluginID));
             output.Hold(route.Shortcut); voice.Commit(true, DateTimeOffset.UtcNow);
             Status = "Dictation shortcut held · "+MicrophoneSummary;
         }
-        catch (Exception error) { pending = false; Status = error.Message; }
+        catch (Exception error) { voiceStart.Cancel();if(!output.HasHeldKeys)ReleaseVoice?.Invoke();Status = error.Message; }
         Changed?.Invoke();
     }
+    public void Dispose(){Stop();timer.Dispose();repeatTimer.Dispose();}
     private void FinishVoice()
     {
-        generation++; pending = false;
-        try { output.Release(); voice.Commit(false, DateTimeOffset.UtcNow); Status = "Dictation shortcut released"; }
+        repeatTimer.Stop();repeatUsage=null;
+        voiceStart.Cancel();
+        try { output.Release(); voice.Commit(false, DateTimeOffset.UtcNow);ReleaseVoice?.Invoke();Status = "Dictation shortcut released"; }
         catch (Exception error) { Status = error.Message; }
         Changed?.Invoke();
     }

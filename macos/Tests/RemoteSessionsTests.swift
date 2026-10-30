@@ -133,7 +133,7 @@ import UniformTypeIdentifiers
         second.releaseVoice?()
         let previousAppID=first.config.appPluginID,previousBindings=first.config.bindings
         try first.selectPlugins(deviceID:firstID,appID:Configuration.noSpecificAppID)
-        check(first.availableActions == [.native,.send,.backspace,.escape] && first.appPlugin == nil,"shared selection exposes generic typing controls without a target app")
+        check(first.availableActions == [.native,.focus,.send,.backspace,.escape] && first.appPlugin == nil,"shared selection exposes typing controls and an explicit Open app action")
         var sharedConfig=first.config;sharedConfig.bindings[0].action = .escape
         try first.update(sharedConfig)
         let nativeWorkspace=try RemoteSessions(store:legacyStore,bundledPlugins:bundled)

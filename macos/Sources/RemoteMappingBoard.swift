@@ -19,7 +19,7 @@ final class RemoteMappingBoard: NSView {
         addSubview(canvas);addSubview(connections)
     }
     required init?(coder:NSCoder) { fatalError("init(coder:) has not been implemented") }
-    func update(layout:RemoteLayout,bindings:[Binding],selection:String?,actions:[RemoteAction],learningID:String?,active:Set<Usage>,dictationShortcut:String = "") {
+    func update(layout:RemoteLayout,bindings:[Binding],selection:String?,actions:[RemoteAction],learningID:String?,active:Set<Usage>,dictationShortcut:String = "",launchAppNames:[String:String] = [:],currentAppID:String = "") {
         if model != layout {
             cards.forEach { $0.removeFromSuperview() };model=layout
             cards=layout.buttons.sorted { a,b in a.bounds.y == b.bounds.y ? a.bounds.x<b.bounds.x:a.bounds.y<b.bounds.y }.map { control in
@@ -33,7 +33,7 @@ final class RemoteMappingBoard: NSView {
         selectedID=selection
         for card in cards {
             let binding=bindings.first { $0.controlID == card.control.id || (card.control.id.hasPrefix("button-") && $0.name == card.control.label) }
-            card.update(binding:binding,dictationShortcut:dictationShortcut,selected:selection == card.control.id,actions:actions,learning:learningID == card.control.id,otherLearning:learningID != nil && learningID != card.control.id,live:binding?.usage.map { active.contains($0) } ?? false)
+            card.update(binding:binding,dictationShortcut:dictationShortcut,launchAppName:launchAppNames[binding?.launchAppID ?? currentAppID],selected:selection == card.control.id,actions:actions,learning:learningID == card.control.id,otherLearning:learningID != nil && learningID != card.control.id,live:binding?.usage.map { active.contains($0) } ?? false)
         }
         needsLayout=true
     }
@@ -102,23 +102,25 @@ private final class MappingCard:NSView {
     init(control:LayoutControl) {
         self.control=control;super.init(frame:.zero);wantsLayer=true
         layer?.cornerRadius=12;layer?.borderWidth=1
-        name.title=control.label;name.isBordered=false;name.alignment = .left;name.font = .systemFont(ofSize:12,weight:.semibold)
+        name.title=control.label;name.isBordered=false;name.alignment = .left;name.font = WorkspaceTypography.body(12,weight:.semibold)
         name.target=self;name.action=#selector(choose);name.setAccessibilityLabel("Select \(control.label)")
         name.cell?.lineBreakMode = .byTruncatingTail;name.toolTip=control.hint ?? control.label
-        linkButton.isBordered=false;linkButton.font = .systemFont(ofSize:11,weight:.medium);linkButton.target=self;linkButton.action=#selector(linkControl)
-        picker.controlSize = .small;picker.font = .systemFont(ofSize:11);picker.target=self;picker.action=#selector(assign)
+        linkButton.isBordered=false;linkButton.font = WorkspaceTypography.body(11,weight:.medium);linkButton.target=self;linkButton.action=#selector(linkControl)
+        picker.controlSize = .small;picker.font = WorkspaceTypography.body(11);picker.target=self;picker.action=#selector(assign)
         picker.setAccessibilityLabel("Action when pressing \(control.label)")
         for view in [name,picker,linkButton] { addSubview(view) }
     }
     required init?(coder:NSCoder) { fatalError("init(coder:) has not been implemented") }
-    func update(binding:Binding?,dictationShortcut:String,selected:Bool,actions:[RemoteAction],learning:Bool,otherLearning:Bool,live:Bool) {
+    func update(binding:Binding?,dictationShortcut:String,launchAppName:String?,selected:Bool,actions:[RemoteAction],learning:Bool,otherLearning:Bool,live:Bool) {
         self.learning=learning
         layer?.backgroundColor=(live ? NSColor.systemTeal.withAlphaComponent(0.12):selected ? NSColor.rvAccent.withAlphaComponent(0.08):NSColor.white).cgColor
         layer?.borderColor=(live ? NSColor.systemTeal:selected ? NSColor.rvAccent:NSColor.rvBorder).cgColor
         layer?.borderWidth=selected || live ? 1.5:1
         name.contentTintColor=live ? .systemTeal:selected ? .rvAccent:.rvInk
         name.setAccessibilityValue(selected ? "Selected":"")
-        let titles=actions.map { $0 == .dictate && !dictationShortcut.isEmpty ? "Dictation · \(dictationShortcut)" : $0.title }
+        let titles=actions.map { action in
+            action == .focus && binding?.action == .focus ? "Open app · \(launchAppName ?? "Choose app…")" : action == .dictate && !dictationShortcut.isEmpty ? "Dictation · \(dictationShortcut)" : action.title
+        }
         if menuTitles != titles { self.actions=actions;menuTitles=titles;picker.removeAllItems();picker.addItems(withTitles:titles) }
         picker.selectItem(at:actions.firstIndex(of:binding?.action ?? .native) ?? 0)
         picker.isEnabled = !learning && !otherLearning
