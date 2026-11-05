@@ -1,0 +1,9 @@
+# Dictation in any app
+
+In the remote’s **Apps** or **Settings** page, choose **Dictation in any app**. It is off by default. Enable Dictation in **macOS System Settings → Keyboard**, then choose and confirm the same shortcut option in JustVibe Remote: the microphone key, Control twice, Globe twice, Right/Left/Either Command twice, or Customize. The microphone-key choice uses Apple’s documented Fn+D Dictation command. For Customize, click the recorder and press your modifier-plus-key chord or a function key (F1–F20, including F13). Select a linked microphone button for the remote. Double-press gestures are sent as cancellable, spaced modifier events, and cleanup releases any partly sent gesture.
+
+Choose **Use when app dictation is not configured** to keep configured native app dictation, or **Use in every app** to use macOS Dictation throughout. Click a supported text field, then press the remote button once to start and again to stop. Stop sends Escape rather than toggling an already-ended recording back on. Profile and focus changes cancel delayed starts; cleanup stays addressed to the original app. The app does not query macOS Dictation’s recording state, so avoid mixing manual controls with an active remote session. Verify focus-change cleanup with your apps.
+
+This is a per-remote host setting; no extra app plugin is needed. It does not change app shortcuts, enable macOS Dictation automatically, select another app’s microphone, or record audio itself. macOS handles recognition according to its settings. See [Apple’s Dictation guide](https://support.apple.com/en-gb/guide/mac-help/mh40584/mac). The feature is macOS-only; live speech recognition and focus-change behavior require manual testing.
+
+Microphone testing starts only when you click **Start 5-second test**. A successful preview does not verify which microphone another app uses.

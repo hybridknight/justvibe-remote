@@ -56,6 +56,8 @@ class SigningSafetyTests(unittest.TestCase):
             (root/'macos/Info.plist').write_text('fixture');(root/'macos/Sources/main.swift').write_text('fixture')
             (root/'assets/branding').mkdir(parents=True)
             for asset in ['JustVibeRemote.icns','JustVibeRemote.png']:(root/'assets/branding'/asset).write_text('fixture')
+            (root/'assets/fonts').mkdir()
+            for asset in ['Test.ttf','Test-OFL.txt','README.md']:(root/'assets/fonts'/asset).write_text('fixture')
             (root/'plugins/examples/device').mkdir(parents=True)
             (root/'docs').mkdir()
             for guide in ['PLUGIN-AUTHORING.md','PLUGINS.md','IMAGE-TO-PLUGIN.md']:(root/'docs'/guide).write_text('fixture')
