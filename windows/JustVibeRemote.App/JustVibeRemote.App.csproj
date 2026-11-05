@@ -5,7 +5,7 @@
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <CopyOutputSymbolsToPublishDirectory>false</CopyOutputSymbolsToPublishDirectory>
     <ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable>
-    <Version>0.9.4</Version><AssemblyName>JustVibeRemote</AssemblyName><ApplicationManifest>app.manifest</ApplicationManifest>
+    <Version>1.0.0</Version><AssemblyName>JustVibeRemote</AssemblyName><ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyTitle>JustVibe Remote</AssemblyTitle>
     <Product>JustVibe Remote</Product>
     <ApplicationIcon>../../assets/branding/JustVibeRemote.ico</ApplicationIcon>
