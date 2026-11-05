@@ -40,6 +40,8 @@ Platforms reflect the plugin manifests. Confirm shortcuts in your app and check 
 
 See [Getting started](docs/wiki/Getting-started.md) for button testing, microphone setup, and the full walkthrough.
 
+Using an AI assistant? Copy a prompt from [PROMPT.md](PROMPT.md) to get help setting up your remote or adding support for a new app.
+
 ## Privacy
 
 JustVibe Remote runs locally, with no network client, telemetry, or audio uploads. It does not store microphone recordings or dictated text. The optional five-second microphone test starts only when you request it, and its audio stays in memory.
