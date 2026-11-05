@@ -8,6 +8,8 @@ Use a handheld remote to dictate, send prompts, navigate, and trigger shortcuts 
 
 Built for **macOS 13+ on Apple Silicon** and **Windows x64 / ARM64**. Voice input uses the target app’s dictation feature, or optional macOS Dictation across apps; compatibility depends on your hardware and plugins.
 
+![JustVibe Remote on macOS showing remote button mappings for ChatGPT](assets/screenshots/justvibe-remote-macos-button-mapping.png)
+
 ## Build and test
 
 **macOS:** install Apple Command Line Tools. Configure a persistent development signer once, then test and build:
