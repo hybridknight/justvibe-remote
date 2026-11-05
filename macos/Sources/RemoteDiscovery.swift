@@ -22,7 +22,10 @@ struct DiscoveredRemote:Equatable {
     var hardwareID:String { String(format:"%04X:%04X",vendorID,productID) }
     var id:String { hardwareID + "|" + transport }
     func matchingPlugins(in catalog:PluginCatalog)->[PluginManifest] {
-        catalog.devices.filter { $0.device?.profile.vendorId == vendorID && $0.device?.profile.productId == productID }
+        catalog.devices.filter { manifest in
+            guard let profile=manifest.device?.profile else { return false }
+            return profile.vendorId == vendorID && profile.productId == productID
+        }
     }
 }
 enum RemoteDiscovery {
