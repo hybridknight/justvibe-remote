@@ -1,3 +1,13 @@
+## JustVibe Remote 1.0.0
+
+Use a handheld remote to dictate, send prompts, navigate, and trigger shortcuts in your AI apps.
+
+- Visual button learning, custom actions, per-app profiles, and Follow active app routing.
+- Open an app or cycle through a chosen app list from a remote button.
+- Bundled XING WEI USB receiver support, ChatGPT profiles for macOS and Windows, and Antigravity and Cursor profiles for macOS.
+- Optional macOS Dictation across apps and an explicitly started local microphone preview.
+- Declarative device/app plugins, starter packages, and documentation.
+
 ## Downloads
 
 - **macOS ARM64:** macOS 13 or later on Apple Silicon. Extract the archive and move `JustVibe Remote.app` to Applications.
@@ -8,6 +18,8 @@
 
 The macOS package is ad-hoc signed and is not Apple-notarized. Windows packages are not Authenticode-signed. These packages may be blocked or flagged by operating-system security checks.
 
-Automated checks cover core behavior, session handling, plugin validation, and native Windows UI previews. They do not verify physical receivers, live dictation, microphone selection in another app, or real audio capture. Windows ARM64 is cross-built; it is not run on ARM64 hardware by this workflow. Review the repository's platform support and live-test notes before publishing this draft.
+Automated checks cover core behavior, session handling, plugin validation, and native Windows UI previews. They do not verify physical receivers, live dictation, microphone selection in another app, or real audio capture. Windows ARM64 is cross-built; it is not run on ARM64 hardware by this workflow. Live-test status: macOS microphone preview and remote-triggered ChatGPT dictation were previously user-verified, but the latest ChatGPT shortcut change has not been retested live. Physical receiver behavior and Windows dictation still need live acceptance testing. No new hardware or audio-capture test was performed for this release.
 
 Dictation runs through the target app or optional macOS Dictation. JustVibe Remote does not upload audio.
+
+Windows custom actions run alongside native button actions. On macOS, multiple remotes require distinct receiver hardware IDs. Cursor controls adjust native speed and acceleration only.
