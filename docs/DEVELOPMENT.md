@@ -28,7 +28,7 @@ After merging, update local `develop` before starting the next feature. Use pull
 
 [CI](../.github/workflows/ci.yml) runs on pull requests targeting `main`, `develop`, `release/**`, or `hotfix/**`; pushes to those branches; and manual dispatches. The release workflow also calls it against the tagged commit.
 
-- **macOS ARM64:** use a native Apple Silicon runner, run Python signing/release checks and Swift core/session tests, build the app, and upload a ZIP.
+- **macOS ARM64:** use a native macOS 26 Apple Silicon runner with the current Swift toolchain, run Python signing/release checks and Swift core/session tests, build the app, and upload a ZIP.
 - **Windows x64 and ARM64:** run portable tests, validate bundled plugins and starter manifests using the official validator, build and verify native UI pages, and publish self-contained ZIPs for both architectures.
 - Upload the Windows UI verification report even if a later step fails.
 - Keep build artifacts for 14 days. Downloads appear on the Actions run page; release drafts receive their own copies.

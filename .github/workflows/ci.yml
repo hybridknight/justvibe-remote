@@ -18,14 +18,16 @@ concurrency:
 jobs:
   macos:
     name: macOS ARM64
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
       - name: Confirm native Apple Silicon runner
-        run: test "$(uname -m)" = arm64
+        run: |
+          test "$(uname -m)" = arm64
+          xcrun swift --version
       - name: Signing safety tests
         run: python3 -m unittest discover -s scripts/tests -v
       - name: Core and session tests (no hardware or recording)
@@ -40,7 +42,7 @@ jobs:
           cp -R "dist/JustVibe Remote.app" build/package-macos/
           cp LICENSE build/package-macos/
           ditto -c -k --sequesterRsrc build/package-macos dist/JustVibeRemote-macos-arm64.zip
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7.0.2
         with:
           name: package-macos-arm64
           path: dist/JustVibeRemote-macos-arm64.zip
@@ -52,10 +54,10 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6.1.0
         with:
           dotnet-version: '10.0.x'
       - name: Portable feature checks
@@ -74,7 +76,7 @@ jobs:
       - name: Native page and setup previews (no receivers or recording)
         shell: pwsh
         run: ./scripts/test-windows-ui.ps1 -SkipBuild
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7.0.2
         if: always()
         with:
           name: windows-ui-verification
@@ -91,7 +93,7 @@ jobs:
             Copy-Item LICENSE $Output
             Compress-Archive -Path "$Output/*" -DestinationPath "dist/JustVibeRemote-windows-$Runtime.zip"
           }
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7.0.2
         with:
           name: package-windows
           path: dist/JustVibeRemote-windows-*.zip
