@@ -33,7 +33,7 @@ Platforms reflect the plugin manifests. Confirm shortcuts in your app and check 
 
 ## Get started
 
-1. **Build the app** using the [macOS or Windows build guide](docs/wiki/Build-and-test.md). Open `dist/JustVibe Remote.app` on macOS, or `JustVibeRemote.exe` inside the complete Windows distribution folder.
+1. **Download version 1.0.0** from [GitHub Releases](https://github.com/hybridknight/justvibe-remote/releases/tag/v1.0.0), or build it using the [macOS or Windows build guide](docs/wiki/Build-and-test.md). Extract the package and open `JustVibe Remote.app` on macOS, or `JustVibeRemote.exe` inside the complete Windows distribution folder. Local macOS builds are written to `dist/JustVibe Remote.app`.
 2. **Test the target app’s shortcut with a keyboard.** Confirm that dictation works and whether it requires holding the keys or pressing once to start and again to stop.
 3. **Connect and configure your remote.** On macOS, open **Remotes → Set up remote** and grant Input Monitoring and Accessibility when prompted. On Windows, follow the [setup and dictation guide](docs/WINDOWS-SETUP.md).
 4. **Assign your controls.** Choose an app profile, link the remote buttons, and assign actions. For voice, select the intended microphone in the target app, then focus its input and try the remote.
@@ -65,7 +65,7 @@ Development uses **Git Flow**: features merge into `develop`, and release branch
 
 ## Status
 
-These are development builds. Local macOS builds are not Apple-notarized. The Windows x64 package has been built and run on Windows; physical receiver behavior and Windows dictation still need live acceptance testing. Windows custom actions run alongside native button actions.
+Version 1.0.0 packages are available for macOS ARM64 and Windows x64 / ARM64. The macOS release is ad-hoc signed and is not Apple-notarized; Windows releases are not Authenticode-signed. The Windows x64 package has been built and run on Windows; physical receiver behavior and Windows dictation still need live acceptance testing. Windows custom actions run alongside native button actions.
 
 On macOS, multiple remotes require distinct receiver hardware IDs. Cursor controls adjust native speed and acceleration only. See [status and limitations](docs/wiki/Status-and-limitations.md) for the full validation and live-test status.
 
