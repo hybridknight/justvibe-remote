@@ -33,12 +33,12 @@ Platforms reflect the plugin manifests. Confirm shortcuts in your app and check 
 
 ## Get started
 
-1. **Download version 1.0.0** from [GitHub Releases](https://github.com/hybridknight/justvibe-remote/releases/tag/v1.0.0), or build it using the [macOS or Windows build guide](docs/wiki/Build-and-test.md). Extract the package and open `JustVibe Remote.app` on macOS, or `JustVibeRemote.exe` inside the complete Windows distribution folder. Local macOS builds are written to `dist/JustVibe Remote.app`.
+1. **Download version 1.0.0** from [GitHub Releases](https://github.com/hybridknight/justvibe-remote/releases/tag/v1.0.0), or build it using the [macOS or Windows build guide](https://github.com/hybridknight/justvibe-remote/wiki/Build-and-test). Extract the package and open `JustVibe Remote.app` on macOS, or `JustVibeRemote.exe` inside the complete Windows distribution folder. Local macOS builds are written to `dist/JustVibe Remote.app`.
 2. **Test the target app’s shortcut with a keyboard.** Confirm that dictation works and whether it requires holding the keys or pressing once to start and again to stop.
 3. **Connect and configure your remote.** On macOS, open **Remotes → Set up remote** and grant Input Monitoring and Accessibility when prompted. On Windows, follow the [setup and dictation guide](docs/WINDOWS-SETUP.md).
 4. **Assign your controls.** Choose an app profile, link the remote buttons, and assign actions. For voice, select the intended microphone in the target app, then focus its input and try the remote.
 
-See [Getting started](docs/wiki/Getting-started.md) for button testing, microphone setup, and the full walkthrough.
+See [Getting started](https://github.com/hybridknight/justvibe-remote/wiki/Getting-started) for button testing, microphone setup, and the full walkthrough.
 
 Using an AI assistant? Copy a prompt from [PROMPT.md](PROMPT.md) to get help setting up your remote or adding support for a new app.
 
@@ -46,22 +46,22 @@ Using an AI assistant? Copy a prompt from [PROMPT.md](PROMPT.md) to get help set
 
 JustVibe Remote runs locally, with no network client, telemetry, or audio uploads. It does not store microphone recordings or dictated text. The optional five-second microphone test starts only when you request it, and its audio stays in memory.
 
-Target apps handle dictation separately and may send audio to their own services. Their microphone settings and privacy policies apply. See [privacy and permissions](docs/wiki/Privacy-and-permissions.md).
+Target apps handle dictation separately and may send audio to their own services. Their microphone settings and privacy policies apply. See [privacy and permissions](https://github.com/hybridknight/justvibe-remote/wiki/Privacy-and-permissions).
 
 ## Documentation
 
-Setup, build instructions, button configuration, dictation, plugins, and privacy details are in the [wiki-ready documentation](docs/wiki/Home.md).
+Setup, build instructions, button configuration, dictation, plugins, and privacy details are in the [GitHub Wiki](https://github.com/hybridknight/justvibe-remote/wiki).
 
-GitHub Wiki will be published after this repository becomes public. Until then, browse the pages here:
+Browse the guides:
 
-- [Getting started](docs/wiki/Getting-started.md)
-- [Build and test](docs/wiki/Build-and-test.md)
-- [Dictation in any app](docs/wiki/Dictation-in-any-app.md)
-- [Privacy and permissions](docs/wiki/Privacy-and-permissions.md)
-- [Plugins and apps](docs/wiki/Plugins-and-apps.md)
-- [Status and limitations](docs/wiki/Status-and-limitations.md)
+- [Getting started](https://github.com/hybridknight/justvibe-remote/wiki/Getting-started)
+- [Build and test](https://github.com/hybridknight/justvibe-remote/wiki/Build-and-test)
+- [Dictation in any app](https://github.com/hybridknight/justvibe-remote/wiki/Dictation-in-any-app)
+- [Privacy and permissions](https://github.com/hybridknight/justvibe-remote/wiki/Privacy-and-permissions)
+- [Plugins and apps](https://github.com/hybridknight/justvibe-remote/wiki/Plugins-and-apps)
+- [Status and limitations](https://github.com/hybridknight/justvibe-remote/wiki/Status-and-limitations)
 
-For contributors, the [technical guides](docs/) remain with the source. See [publishing the wiki](docs/WIKI-PUBLISHING.md) when GitHub Wiki is enabled.
+For contributors, the [technical guides](docs/) and [wiki source pages](docs/wiki/) remain with the source. See [publishing the wiki](docs/WIKI-PUBLISHING.md) to keep the published pages current.
 
 Development uses **Git Flow**: features merge into `develop`, and release branches merge into `main`. GitHub Actions tests and packages macOS and Windows builds; version tags prepare draft releases. See [development and releases](docs/DEVELOPMENT.md) for the workflow.
 
@@ -69,7 +69,7 @@ Development uses **Git Flow**: features merge into `develop`, and release branch
 
 Version 1.0.0 packages are available for macOS ARM64 and Windows x64 / ARM64. The macOS release is ad-hoc signed and is not Apple-notarized; Windows releases are not Authenticode-signed. The Windows x64 package has been built and run on Windows; physical receiver behavior and Windows dictation still need live acceptance testing. Windows custom actions run alongside native button actions.
 
-On macOS, multiple remotes require distinct receiver hardware IDs. Cursor controls adjust native speed and acceleration only. See [status and limitations](docs/wiki/Status-and-limitations.md) for the full validation and live-test status.
+On macOS, multiple remotes require distinct receiver hardware IDs. Cursor controls adjust native speed and acceleration only. See [status and limitations](https://github.com/hybridknight/justvibe-remote/wiki/Status-and-limitations) for the full validation and live-test status.
 
 ## License
 
