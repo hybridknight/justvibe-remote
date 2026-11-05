@@ -28,13 +28,17 @@ struct DiscoveredRemote:Equatable {
 enum RemoteDiscovery {
     static func grouped(_ records:[RemoteInterfaceEvidence])->[DiscoveredRemote] {
         let external=records.filter { (1...65535).contains($0.vendorID) && (1...65535).contains($0.productID) && ["usb","bluetooth","bluetooth low energy"].contains($0.transport.lowercased()) }
-        return Dictionary(grouping:external,by:{ String($0.vendorID) + ":" + String($0.productID) + "|" + $0.transport.lowercased() }).values.map { records in
-            DiscoveredRemote(interfaces:Array(Set(records.map { EvidenceKey($0) })).map(\.value).sorted { a,b in
+        let groups=Dictionary(grouping:external,by:{ String($0.vendorID) + ":" + String($0.productID) + "|" + $0.transport.lowercased() })
+        let remotes:[DiscoveredRemote]=groups.values.map { records in
+            let unique=Set(records.map { EvidenceKey($0) })
+            let interfaces:[RemoteInterfaceEvidence]=unique.map(\.value).sorted { a,b in
                 if a.name != b.name { return a.name < b.name }
                 if a.usagePage != b.usagePage { return a.usagePage < b.usagePage }
                 return a.usage < b.usage
-            })
-        }.sorted { $0.name == $1.name ? $0.id < $1.id : $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+            }
+            return DiscoveredRemote(interfaces:interfaces)
+        }
+        return remotes.sorted { $0.name == $1.name ? $0.id < $1.id : $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
     private struct EvidenceKey:Hashable {
         let value:RemoteInterfaceEvidence
