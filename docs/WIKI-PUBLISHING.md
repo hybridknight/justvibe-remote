@@ -1,6 +1,6 @@
 # Publishing the GitHub Wiki
 
-The Markdown files in `docs/wiki/` are the wiki source extracted from the project README. `Home.md` is the landing page and `_Sidebar.md` provides navigation. The README links to these checked-in pages while GitHub Wiki is unavailable.
+The Markdown files in `docs/wiki/` are the wiki source extracted from the project README. `Home.md` is the landing page and `_Sidebar.md` provides navigation. The README links to the [published GitHub Wiki](https://github.com/hybridknight/justvibe-remote/wiki); keep these source pages in sync with the separate wiki repository.
 
 ## First publication
 
@@ -23,7 +23,7 @@ The Markdown files in `docs/wiki/` are the wiki source extracted from the projec
    git -C ../justvibe-remote.wiki push
    ```
 
-5. Check the Home page, sidebar, page links, and links to the main repository. Update the README’s documentation link to [GitHub Wiki](https://github.com/hybridknight/justvibe-remote/wiki) and remove the temporary publication notice. Keep the checked-in source links if useful for contributors.
+5. Check the Home page, sidebar, page links, and links to the main repository. The README links to the published wiki; keep its page links aligned with the wiki filenames.
 
 The copy replaces matching filenames in the wiki checkout; review any existing wiki edits before publishing. Other wiki files are left intact. These instructions do not change repository visibility or publish anything automatically.
 
