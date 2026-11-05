@@ -1,0 +1,99 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop, 'release/**', 'hotfix/**']
+  pull_request:
+    branches: [main, develop, 'release/**', 'hotfix/**']
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+jobs:
+  macos:
+    name: macOS ARM64
+    runs-on: macos-15
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Confirm native Apple Silicon runner
+        run: test "$(uname -m)" = arm64
+      - name: Signing safety tests
+        run: python3 -m unittest discover -s scripts/tests -v
+      - name: Core and session tests (no hardware or recording)
+        run: ./scripts/test-macos.sh
+      - name: Build with ad-hoc CI signature
+        env:
+          JUSTVIBEREMOTE_SIGNING_IDENTITY: '-'
+        run: ./scripts/build-macos.sh
+      - name: Package app and license
+        run: |
+          mkdir -p build/package-macos
+          cp -R "dist/JustVibe Remote.app" build/package-macos/
+          cp LICENSE build/package-macos/
+          ditto -c -k --sequesterRsrc build/package-macos dist/JustVibeRemote-macos-arm64.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: package-macos-arm64
+          path: dist/JustVibeRemote-macos-arm64.zip
+          if-no-files-found: error
+          retention-days: 14
+
+  windows:
+    name: Windows x64 and ARM64
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Portable feature checks
+        run: dotnet run --project windows/JustVibeRemote.Tests -- .
+      - name: Validate bundled plugins and starters
+        shell: pwsh
+        run: |
+          $Manifests = Get-ChildItem plugins/bundled,plugins/examples -Filter plugin.json -Recurse
+          if ($Manifests.Count -eq 0) { throw 'No plugin manifests found.' }
+          foreach ($Manifest in $Manifests) {
+            dotnet run --project windows/JustVibeRemote.PluginTool -- validate $Manifest.DirectoryName
+            if ($LASTEXITCODE -ne 0) { throw "Invalid plugin: $($Manifest.FullName)" }
+          }
+      - name: Build native UI
+        run: dotnet build windows/JustVibeRemote.App -c Release
+      - name: Native page and setup previews (no receivers or recording)
+        shell: pwsh
+        run: ./scripts/test-windows-ui.ps1 -SkipBuild
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-ui-verification
+          path: build/windows-ui-verification
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Publish and package both architectures
+        shell: pwsh
+        run: |
+          foreach ($Runtime in @('win-x64', 'win-arm64')) {
+            $Output = "dist/windows-$Runtime"
+            dotnet publish windows/JustVibeRemote.App -c Release -r $Runtime --self-contained true -o $Output
+            if ($LASTEXITCODE -ne 0) { throw "Publish failed: $Runtime" }
+            Copy-Item LICENSE $Output
+            Compress-Archive -Path "$Output/*" -DestinationPath "dist/JustVibeRemote-windows-$Runtime.zip"
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: package-windows
+          path: dist/JustVibeRemote-windows-*.zip
+          if-no-files-found: error
+          retention-days: 14

@@ -61,6 +61,8 @@ GitHub Wiki will be published after this repository becomes public. Until then, 
 
 For contributors, the [technical guides](docs/) remain with the source. See [publishing the wiki](docs/WIKI-PUBLISHING.md) when GitHub Wiki is enabled.
 
+Development uses **Git Flow**: features merge into `develop`, and release branches merge into `main`. GitHub Actions tests and packages macOS and Windows builds; version tags prepare draft releases. See [development and releases](docs/DEVELOPMENT.md) for the workflow.
+
 ## Status
 
 These are development builds. Local macOS builds are not Apple-notarized. The Windows x64 package has been built and run on Windows; physical receiver behavior and Windows dictation still need live acceptance testing. Windows custom actions run alongside native button actions.

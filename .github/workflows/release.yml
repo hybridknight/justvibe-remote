@@ -1,0 +1,75 @@
+name: Draft release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify release tag
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Require a release commit on main
+        run: git merge-base --is-ancestor HEAD origin/main
+      - name: Check tag against application versions
+        run: python3 scripts/check-release.py "$GITHUB_REF_NAME"
+
+  build:
+    needs: verify
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
+  draft:
+    name: Assemble draft GitHub release
+    needs: [verify, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: package-*
+          path: release-assets
+          merge-multiple: true
+      - name: Version packages and create checksums
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          python3 - <<'PY'
+          import hashlib, os
+          from pathlib import Path
+          root = Path('release-assets')
+          expected = {'JustVibeRemote-macos-arm64.zip', 'JustVibeRemote-windows-win-x64.zip', 'JustVibeRemote-windows-win-arm64.zip'}
+          assert {p.name for p in root.iterdir()} == expected, 'Missing or unexpected release assets'
+          for path in sorted(root.glob('*.zip')):
+              path.rename(path.with_name(path.stem + '-' + os.environ['RELEASE_TAG'] + path.suffix))
+          with (root / 'SHA256SUMS.txt').open('w') as checksums:
+              for path in sorted(root.glob('*.zip')):
+                  checksums.write(hashlib.sha256(path.read_bytes()).hexdigest() + '  ' + path.name + '\n')
+          PY
+      - name: Create draft with packages and release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$RELEASE_TAG" release-assets/* \
+            --verify-tag --draft --title "JustVibe Remote $RELEASE_TAG" \
+            --generate-notes --notes-file .github/RELEASE-NOTES.md
